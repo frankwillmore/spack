@@ -26,25 +26,9 @@ class Vacuumms(CMakePackage):
     variant('tiff', default=False, description='Build TIFF utilities')
     variant('cuda', default=False, description='Build CUDA applications and utilities')
 
-    depends_on('libtiff', type=('link','run'), when='+tiff') 
-    depends_on('cuda', type=('link','run'), when='+cuda') 
-
-#    def cmake_args(self):
-#        args = [
-#            '-DWHATEVER:STRING=somevalue',
-#            self.define('ENABLE_BROKEN_FEATURE', False),
-#            self.define_from_variant('DETECT_HDF5', 'hdf5'),
-#            self.define_from_variant('THREADS'), # True if +threads
-#        ]
-#        return args
-
-#    def cmake_args(self):
-#        if '+cuda' in self.spec:
-#            options.append('-DBUILD_CUDA_COMPONENTS=True')
-#        if '+tiff' in self.spec:
-#            options.append('-DBUILD_TIFF_UTILS=True')
+    depends_on('libtiff', type=('link', 'run'), when='+tiff')
+    depends_on('cuda', type=('link', 'run'), when='+cuda')
 
     def cmake_args(self):
-        return [self.define_from_variant('BUILD_CUDA_COMPONENTS', 'cuda'), self.define_from_variant('BUILD_TIFF_UTILS', 'tiff')]
-
-
+        return [self.define_from_variant('BUILD_CUDA_COMPONENTS', 'cuda'),
+                self.define_from_variant('BUILD_TIFF_UTILS', 'tiff')]
