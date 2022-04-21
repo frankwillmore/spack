@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -30,6 +30,7 @@ from sphinx.ext.apidoc import main as sphinx_apidoc
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath('_spack_root/lib/spack/external'))
+sys.path.insert(0, os.path.abspath('_spack_root/lib/spack/external/pytest-fallback'))
 
 if sys.version_info[0] < 3:
     sys.path.insert(
@@ -179,6 +180,7 @@ nitpick_ignore = [
     ('py:class', '_frozen_importlib_external.SourceFileLoader'),
     # Spack classes that are private and we don't want to expose
     ('py:class', 'spack.provider_index._IndexBase'),
+    ('py:class', 'spack.repo._PrependFileLoader'),
 ]
 
 # The reST default role (used for this markup: `text`) to use for all documents.
