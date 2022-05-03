@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -17,6 +17,10 @@ class Variorum(CMakePackage):
 
     maintainers = ["slabasan", "rountree"]
 
+    version('0.4.1', sha256='be7407b856bc2239ecaa27d3df80aee2f541bb721fbfa183612bd9c0ce061f28')
+    version('0.4.0', sha256='70ff1c5a3ae15d0bd07d409ab6f3c128e69528703a829cb18ecb4a50adeaea34')
+    version('0.3.0', sha256='f79563f09b8fe796283c879b05f7730c36d79ca0346c12995b7bccc823653f42')
+    version('0.2.0', sha256='b8c010b26aad8acc75d146c4461532cf5d9d3d24d6fc30ee68f6330a68e65744')
     version("0.1.0", tag="v0.1.0")
 
     ############
@@ -34,7 +38,8 @@ class Variorum(CMakePackage):
     # Package dependencies #
     ########################
     depends_on("cmake@2.8:", type="build")
-    depends_on("hwloc@1.11.9")
+    depends_on("hwloc")
+    depends_on("jansson", type="link")
 
     #########################
     # Documentation related #
@@ -46,6 +51,13 @@ class Variorum(CMakePackage):
     def cmake_args(self):
         spec = self.spec
         cmake_args = []
+
+        cmake_args.append('-DJANSSON_DIR={0}'.format(spec['jansson'].prefix))
+
+        if spec.satisfies('%cce'):
+            cmake_args.append('-DCMAKE_C_FLAGS=-fcommon')
+            cmake_args.append('-DCMAKE_CCC_FLAGS=-fcommon')
+            cmake_args.append('-DCMAKE_Fortran_FLAGS=-ef')
 
         if "+shared" in spec:
             cmake_args.append("-DBUILD_SHARED_LIBS=ON")

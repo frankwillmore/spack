@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -16,9 +16,10 @@ class RTfbstools(RPackage):
        from sequence/alignment, query JASPAR database and provides a wrapper of
        de novo motif discovery software."""
 
-    homepage = "https://bioconductor.org/packages/TFBSTools"
-    git      = "https://git.bioconductor.org/packages/TFBSTools.git"
+    bioc = "TFBSTools"
 
+    version('1.32.0', commit='235505626b910de29156a07e1f990daa3b5d57d9')
+    version('1.28.0', commit='15e7cf76f39ee3280a27284d58f7adef1c33f193')
     version('1.22.0', commit='613d3567fd662b65269bd200c5aa5f87ac6a4612')
     version('1.20.0', commit='74035fc6beb1af82f171c11ef2b0a8817714c5bc')
     version('1.18.0', commit='17e12b9f3dcb9059d414307ec0bc23ed1ee33294')

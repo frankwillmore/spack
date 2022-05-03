@@ -1,9 +1,8 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
-from spack.util.module_cmd import module
-from spack.util.module_cmd import get_path_args_from_module_line
+from spack.util.module_cmd import get_path_args_from_module_line, module
 
 
 class CrayLibsci(Package):
@@ -13,7 +12,9 @@ class CrayLibsci(Package):
     homepage = "https://docs.nersc.gov/development/libraries/libsci/"
     has_code = False    # Skip attempts to fetch source that is not available
 
+    version("21.08.1.2")
     version("20.06.1")
+    version("20.03.1")
     version("19.06.1")
     version("18.12.1")
     version("18.11.1.2")
@@ -29,13 +30,16 @@ class CrayLibsci(Package):
 
     provides("blas")
     provides("lapack")
-    provides("scalapack")
+    provides("scalapack", when="+mpi")
 
     canonical_names = {
         'gcc': 'GNU',
         'cce': 'CRAY',
         'intel': 'INTEL',
-        'clang': 'ALLINEA'
+        'clang': 'ALLINEA',
+        'aocc': 'AOCC',
+        'nvhpc': 'NVIDIA',
+        'rocmcc': 'AMD'
     }
 
     @property
@@ -55,16 +59,19 @@ class CrayLibsci(Package):
         shared = True if "+shared" in self.spec else False
         compiler = self.spec.compiler.name
 
+        lib = []
         if "+openmp" in self.spec and "+mpi" in self.spec:
-            lib = "libsci_{0}_mpi_mp"
+            lib = ["libsci_{0}_mpi_mp", "libsci_{0}_mp"]
         elif "+openmp" in self.spec:
-            lib = "libsci_{0}_mp"
+            lib = ["libsci_{0}_mp"]
         elif "+mpi" in self.spec:
-            lib = "libsci_{0}_mpi"
+            lib = ["libsci_{0}_mpi", "libsci_{0}"]
         else:
-            lib = "libsci_{0}"
+            lib = ["libsci_{0}"]
 
-        libname = lib.format(self.canonical_names[compiler].lower())
+        libname = []
+        for lib_fmt in lib:
+            libname.append(lib_fmt.format(self.canonical_names[compiler].lower()))
 
         return find_libraries(
             libname,
@@ -78,6 +85,10 @@ class CrayLibsci(Package):
 
     @property
     def scalapack_libs(self):
+        return self.blas_libs
+
+    @property
+    def libs(self):
         return self.blas_libs
 
     def install(self, spec, prefix):

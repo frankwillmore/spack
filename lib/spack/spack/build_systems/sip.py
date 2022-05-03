@@ -1,13 +1,15 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 import inspect
 import os
+import re
 
-from llnl.util.filesystem import working_dir, join_path
-from spack.build_systems.python import PythonPackage
+import llnl.util.tty as tty
+from llnl.util.filesystem import find, join_path, working_dir
+
 from spack.directives import depends_on, extends
 from spack.package import PackageBase, run_after
 
@@ -44,7 +46,47 @@ class SIPPackage(PackageBase):
     depends_on('qt')
     depends_on('py-sip')
 
-    import_modules = PythonPackage.import_modules
+    @property
+    def import_modules(self):
+        """Names of modules that the Python package provides.
+
+        These are used to test whether or not the installation succeeded.
+        These names generally come from running:
+
+        .. code-block:: python
+
+           >> import setuptools
+           >> setuptools.find_packages()
+
+        in the source tarball directory. If the module names are incorrectly
+        detected, this property can be overridden by the package.
+
+        Returns:
+            list: list of strings of module names
+        """
+        modules = []
+        root = os.path.join(
+            self.prefix,
+            self.spec['python'].package.platlib,
+        )
+
+        # Some Python libraries are packages: collections of modules
+        # distributed in directories containing __init__.py files
+        for path in find(root, '__init__.py', recursive=True):
+            modules.append(path.replace(root + os.sep, '', 1).replace(
+                os.sep + '__init__.py', '').replace('/', '.'))
+
+        # Some Python libraries are modules: individual *.py files
+        # found in the site-packages directory
+        for path in find(root, '*.py', recursive=False):
+            modules.append(path.replace(root + os.sep, '', 1).replace(
+                '.py', '').replace('/', '.'))
+
+        modules = [mod for mod in modules if re.match('[a-zA-Z0-9._]+$', mod)]
+
+        tty.debug('Detected the following modules: {0}'.format(modules))
+
+        return modules
 
     def python(self, *args, **kwargs):
         """The python ``Executable``."""
@@ -60,17 +102,15 @@ class SIPPackage(PackageBase):
 
         args = self.configure_args()
 
-        python_include_dir = 'python' + str(spec['python'].version.up_to(2))
-
         args.extend([
             '--verbose',
             '--confirm-license',
             '--qmake', spec['qt'].prefix.bin.qmake,
             '--sip', spec['py-sip'].prefix.bin.sip,
-            '--sip-incdir', join_path(spec['py-sip'].prefix.include,
-                                      python_include_dir),
+            '--sip-incdir', join_path(spec['py-sip'].prefix,
+                                      spec['python'].package.include),
             '--bindir', prefix.bin,
-            '--destdir', inspect.getmodule(self).site_packages_dir,
+            '--destdir', inspect.getmodule(self).python_platlib,
         ])
 
         self.python(configure, *args)
@@ -101,7 +141,16 @@ class SIPPackage(PackageBase):
 
     # Testing
 
-    test = PythonPackage.test
+    def test(self):
+        """Attempts to import modules of the installed package."""
+
+        # Make sure we are importing the installed modules,
+        # not the ones in the source directory
+        for module in self.import_modules:
+            self.run_test(inspect.getmodule(self).python.path,
+                          ['-c', 'import {0}'.format(module)],
+                          purpose='checking import of {0}'.format(module),
+                          work_dir='spack-test')
 
     run_after('install')(PackageBase._run_default_install_time_test_callbacks)
 
@@ -114,7 +163,7 @@ class SIPPackage(PackageBase):
         module = self.spec['py-sip'].variants['module'].value
         if module != 'sip':
             module = module.split('.')[0]
-            with working_dir(inspect.getmodule(self).site_packages_dir):
+            with working_dir(inspect.getmodule(self).python_platlib):
                 with open(os.path.join(module, '__init__.py'), 'a') as f:
                     f.write('from pkgutil import extend_path\n')
                     f.write('__path__ = extend_path(__path__, __name__)\n')

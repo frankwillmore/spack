@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -16,36 +16,52 @@ TODO: make this customizable and allow users to configure
 """
 from __future__ import print_function
 
-import platform
+import functools
 import os.path
+import platform
 import tempfile
+from contextlib import contextmanager
+from itertools import chain
 
 import archspec.cpu
 
 import llnl.util.filesystem as fs
+import llnl.util.lang
 import llnl.util.tty as tty
 
-from itertools import chain
-from functools_backport import reverse_order
-from contextlib import contextmanager
-
-import llnl.util.lang
-
-import spack.repo
 import spack.abi
-import spack.spec
 import spack.compilers
-import spack.architecture
+import spack.environment
 import spack.error
+import spack.platforms
+import spack.repo
+import spack.spec
+import spack.target
 import spack.tengine
 import spack.variant as vt
 from spack.config import config
-from spack.version import ver, Version, VersionList, VersionRange
-from spack.package_prefs import PackagePrefs, spec_externals, is_spec_buildable
-
+from spack.package_prefs import PackagePrefs, is_spec_buildable, spec_externals
+from spack.version import Version, VersionList, VersionRange, ver
 
 #: impements rudimentary logic for ABI compatibility
 _abi = llnl.util.lang.Singleton(lambda: spack.abi.ABI())
+
+
+@functools.total_ordering
+class reverse_order(object):
+    """Helper for creating key functions.
+
+       This is a wrapper that inverts the sense of the natural
+       comparisons on the object.
+    """
+    def __init__(self, value):
+        self.value = value
+
+    def __eq__(self, other):
+        return other.value == self.value
+
+    def __lt__(self, other):
+        return other.value < self.value
 
 
 class Concretizer(object):
@@ -68,14 +84,12 @@ class Concretizer(object):
         """
         Add ``dev_path=*`` variant to packages built from local source.
         """
-        env = spack.environment.get_env(None, None)
+        env = spack.environment.active_environment()
         dev_info = env.dev_specs.get(spec.name, {}) if env else {}
         if not dev_info:
             return False
 
-        path = dev_info['path']
-        path = path if os.path.isabs(path) else os.path.join(
-            env.path, path)
+        path = os.path.normpath(os.path.join(env.path, dev_info['path']))
 
         if 'dev_path' in spec.variants:
             assert spec.variants['dev_path'].value == path
@@ -132,11 +146,11 @@ class Concretizer(object):
 
         # Use a sort key to order the results
         return sorted(usable, key=lambda spec: (
-            not spec.external,                            # prefer externals
-            pref_key(spec),                               # respect prefs
-            spec.name,                                    # group by name
-            reverse_order(spec.versions),                 # latest version
-            spec                                          # natural order
+            not spec.external,             # prefer externals
+            pref_key(spec),                # respect prefs
+            spec.name,                     # group by name
+            reverse_order(spec.versions),  # latest version
+            spec                           # natural order
         ))
 
     def choose_virtual_or_external(self, spec):
@@ -259,8 +273,7 @@ class Concretizer(object):
         # Get platform of nearest spec with a platform, including spec
         # If spec has a platform, easy
         if spec.architecture.platform:
-            new_plat = spack.architecture.get_platform(
-                spec.architecture.platform)
+            new_plat = spack.platforms.by_name(spec.architecture.platform)
         else:
             # Else if anyone else has a platform, take the closest one
             # Search up, then down, along build/link deps first
@@ -269,11 +282,10 @@ class Concretizer(object):
                 spec, lambda x: x.architecture and x.architecture.platform
             )
             if platform_spec:
-                new_plat = spack.architecture.get_platform(
-                    platform_spec.architecture.platform)
+                new_plat = spack.platforms.by_name(platform_spec.architecture.platform)
             else:
                 # If no platform anywhere in this spec, grab the default
-                new_plat = spack.architecture.platform()
+                new_plat = spack.platforms.host()
 
         # Get nearest spec with relevant platform and an os
         # Generally, same algorithm as finding platform, except we only
@@ -388,7 +400,8 @@ class Concretizer(object):
         changed = False
         preferred_variants = PackagePrefs.preferred_variants(spec.name)
         pkg_cls = spec.package_class
-        for name, variant in pkg_cls.variants.items():
+        for name, entry in pkg_cls.variants.items():
+            variant, when = entry
             var = spec.variants.get(name, None)
             if var and '*' in var:
                 # remove variant wildcard before concretizing
@@ -396,12 +409,16 @@ class Concretizer(object):
                 # multivalue variant, a concrete variant cannot have the value
                 # wildcard, and a wildcard does not constrain a variant
                 spec.variants.pop(name)
-            if name not in spec.variants:
+            if name not in spec.variants and any(spec.satisfies(w)
+                                                 for w in when):
                 changed = True
                 if name in preferred_variants:
                     spec.variants[name] = preferred_variants.get(name)
                 else:
                     spec.variants[name] = variant.make_default()
+            if name in spec.variants and not any(spec.satisfies(w)
+                                                 for w in when):
+                raise vt.InvalidVariantForSpecError(name, when, spec)
 
         return changed
 
@@ -615,9 +632,7 @@ class Concretizer(object):
         # Try to adjust the target only if it is the default
         # target for this platform
         current_target = spec.architecture.target
-        current_platform = spack.architecture.get_platform(
-            spec.architecture.platform
-        )
+        current_platform = spack.platforms.by_name(spec.architecture.platform)
 
         default_target = current_platform.target('default_target')
         if PackagePrefs.has_preferred_targets(spec.name):
@@ -636,7 +651,7 @@ class Concretizer(object):
             for ancestor in microarchitecture.ancestors:
                 candidate = None
                 try:
-                    candidate = spack.architecture.Target(ancestor)
+                    candidate = spack.target.Target(ancestor)
                     candidate.optimization_flags(spec.compiler)
                 except archspec.cpu.UnsupportedMicroarchitecture:
                     continue
@@ -686,7 +701,7 @@ def find_spec(spec, condition, default=None):
         visited.add(id(relative))
 
     # Then search all other relatives in the DAG *except* spec
-    for relative in spec.root.traverse(deptypes=all):
+    for relative in spec.root.traverse(deptype='all'):
         if relative is spec:
             continue
         if id(relative) in visited:
@@ -714,16 +729,35 @@ def _compiler_concretization_failure(compiler_spec, arch):
         raise UnavailableCompilerVersionError(compiler_spec, arch)
 
 
-def concretize_specs_together(*abstract_specs):
+def concretize_specs_together(*abstract_specs, **kwargs):
     """Given a number of specs as input, tries to concretize them together.
 
     Args:
+        tests (bool or list or set): False to run no tests, True to test
+            all packages, or a list of package names to run tests for some
         *abstract_specs: abstract specs to be concretized, given either
             as Specs or strings
 
     Returns:
         List of concretized specs
     """
+    if spack.config.get('config:concretizer') == 'original':
+        return _concretize_specs_together_original(*abstract_specs, **kwargs)
+    return _concretize_specs_together_new(*abstract_specs, **kwargs)
+
+
+def _concretize_specs_together_new(*abstract_specs, **kwargs):
+    import spack.solver.asp
+
+    solver = spack.solver.asp.Solver()
+    solver.tests = kwargs.get('tests', False)
+
+    result = solver.solve(abstract_specs)
+    result.raise_if_unsat()
+    return [s.copy() for s in result.specs]
+
+
+def _concretize_specs_together_original(*abstract_specs, **kwargs):
     def make_concretization_repository(abstract_specs):
         """Returns the path to a temporary repository created to contain
         a fake package that depends on all of the abstract specs.
@@ -757,7 +791,7 @@ def concretize_specs_together(*abstract_specs):
     with spack.repo.additional_repository(concretization_repository):
         # Spec from a helper package that depends on all the abstract_specs
         concretization_root = spack.spec.Spec('concretizationroot')
-        concretization_root.concretize()
+        concretization_root.concretize(tests=kwargs.get("tests", False))
         # Retrieve the direct dependencies
         concrete_specs = [
             concretization_root[spec.name].copy() for spec in abstract_specs

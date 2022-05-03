@@ -1,40 +1,25 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from __future__ import division
 
-import multiprocessing
+import contextlib
+import functools
+import inspect
 import os
 import re
-import functools
-import collections
-import inspect
-from datetime import datetime, timedelta
-from six import string_types
 import sys
+from datetime import datetime, timedelta
 
+import six
+from six import string_types
+
+from llnl.util.compat import MutableMapping, MutableSequence, zip_longest
 
 # Ignore emacs backups when listing modules
 ignore_modules = [r'^\.#', '~$']
-
-
-# On macOS, Python 3.8 multiprocessing now defaults to the 'spawn' start
-# method. Spack cannot currently handle this, so force the process to start
-# using the 'fork' start method.
-#
-# TODO: This solution is not ideal, as the 'fork' start method can lead to
-# crashes of the subprocess. Figure out how to make 'spawn' work.
-#
-# See:
-# * https://github.com/spack/spack/pull/18124
-# * https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods  # noqa: E501
-# * https://bugs.python.org/issue33725
-if sys.version_info >= (3,):  # novm
-    fork_context = multiprocessing.get_context('fork')
-else:
-    fork_context = multiprocessing
 
 
 def index_by(objects, *funcs):
@@ -181,6 +166,19 @@ def union_dicts(*dicts):
     return result
 
 
+# Used as a sentinel that disambiguates tuples passed in *args from coincidentally
+# matching tuples formed from kwargs item pairs.
+_kwargs_separator = (object(),)
+
+
+def stable_args(*args, **kwargs):
+    """A key factory that performs a stable sort of the parameters."""
+    key = args
+    if kwargs:
+        key += _kwargs_separator + tuple(sorted(kwargs.items()))
+    return key
+
+
 def memoized(func):
     """Decorator that caches the results of a function, storing them in
     an attribute of that function.
@@ -188,15 +186,23 @@ def memoized(func):
     func.cache = {}
 
     @functools.wraps(func)
-    def _memoized_function(*args):
-        if not isinstance(args, collections.Hashable):
-            # Not hashable, so just call the function.
-            return func(*args)
+    def _memoized_function(*args, **kwargs):
+        key = stable_args(*args, **kwargs)
 
-        if args not in func.cache:
-            func.cache[args] = func(*args)
-
-        return func.cache[args]
+        try:
+            return func.cache[key]
+        except KeyError:
+            ret = func(*args, **kwargs)
+            func.cache[key] = ret
+            return ret
+        except TypeError as e:
+            # TypeError is raised when indexing into a dict if the key is unhashable.
+            raise six.raise_from(
+                UnhashableArguments(
+                    "args + kwargs '{}' was not hashable for function '{}'"
+                    .format(key, func.__name__),
+                ),
+                e)
 
     return _memoized_function
 
@@ -220,6 +226,31 @@ def list_modules(directory, **kwargs):
         elif name.endswith('.py'):
             if not any(re.search(pattern, name) for pattern in ignore_modules):
                 yield re.sub('.py$', '', name)
+
+
+def decorator_with_or_without_args(decorator):
+    """Allows a decorator to be used with or without arguments, e.g.::
+
+        # Calls the decorator function some args
+        @decorator(with, arguments, and=kwargs)
+
+    or::
+
+        # Calls the decorator function with zero arguments
+        @decorator
+
+    """
+    # See https://stackoverflow.com/questions/653368 for more on this
+    @functools.wraps(decorator)
+    def new_dec(*args, **kwargs):
+        if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+            # actual decorated function
+            return decorator(args[0])
+        else:
+            # decorator arguments
+            return lambda realf: decorator(realf, *args, **kwargs)
+
+    return new_dec
 
 
 def key_ordering(cls):
@@ -263,8 +294,198 @@ def key_ordering(cls):
     return cls
 
 
-@key_ordering
-class HashableMap(collections.MutableMapping):
+#: sentinel for testing that iterators are done in lazy_lexicographic_ordering
+done = object()
+
+
+def tuplify(seq):
+    """Helper for lazy_lexicographic_ordering()."""
+    return tuple((tuplify(x) if callable(x) else x) for x in seq())
+
+
+def lazy_eq(lseq, rseq):
+    """Equality comparison for two lazily generated sequences.
+
+    See ``lazy_lexicographic_ordering``.
+    """
+    liter = lseq()  # call generators
+    riter = rseq()
+
+    # zip_longest is implemented in native code, so use it for speed.
+    # use zip_longest instead of zip because it allows us to tell
+    # which iterator was longer.
+    for left, right in zip_longest(liter, riter, fillvalue=done):
+        if (left is done) or (right is done):
+            return False
+
+        # recursively enumerate any generators, otherwise compare
+        equal = lazy_eq(left, right) if callable(left) else left == right
+        if not equal:
+            return False
+
+    return True
+
+
+def lazy_lt(lseq, rseq):
+    """Less-than comparison for two lazily generated sequences.
+
+    See ``lazy_lexicographic_ordering``.
+    """
+    liter = lseq()
+    riter = rseq()
+
+    for left, right in zip_longest(liter, riter, fillvalue=done):
+        if (left is done) or (right is done):
+            return left is done  # left was shorter than right
+
+        sequence = callable(left)
+        equal = lazy_eq(left, right) if sequence else left == right
+        if equal:
+            continue
+
+        if sequence:
+            return lazy_lt(left, right)
+        if left is None:
+            return True
+        if right is None:
+            return False
+
+        return left < right
+
+    return False  # if equal, return False
+
+
+@decorator_with_or_without_args
+def lazy_lexicographic_ordering(cls, set_hash=True):
+    """Decorates a class with extra methods that implement rich comparison.
+
+    This is a lazy version of the tuple comparison used frequently to
+    implement comparison in Python. Given some objects with fields, you
+    might use tuple keys to implement comparison, e.g.::
+
+        class Widget:
+            def _cmp_key(self):
+                return (
+                    self.a,
+                    self.b,
+                    (self.c, self.d),
+                    self.e
+                )
+
+            def __eq__(self, other):
+                return self._cmp_key() == other._cmp_key()
+
+            def __lt__(self):
+                return self._cmp_key() < other._cmp_key()
+
+            # etc.
+
+    Python would compare ``Widgets`` lexicographically based on their
+    tuples. The issue there for simple comparators is that we have to
+    bulid the tuples *and* we have to generate all the values in them up
+    front. When implementing comparisons for large data structures, this
+    can be costly.
+
+    Lazy lexicographic comparison maps the tuple comparison shown above
+    to generator functions. Instead of comparing based on pre-constructed
+    tuple keys, users of this decorator can compare using elements from a
+    generator. So, you'd write::
+
+        @lazy_lexicographic_ordering
+        class Widget:
+            def _cmp_iter(self):
+                yield a
+                yield b
+                def cd_fun():
+                    yield c
+                    yield d
+                yield cd_fun
+                yield e
+
+            # operators are added by decorator
+
+    There are no tuples preconstructed, and the generator does not have
+    to complete. Instead of tuples, we simply make functions that lazily
+    yield what would've been in the tuple. The
+    ``@lazy_lexicographic_ordering`` decorator handles the details of
+    implementing comparison operators, and the ``Widget`` implementor
+    only has to worry about writing ``_cmp_iter``, and making sure the
+    elements in it are also comparable.
+
+    Some things to note:
+
+      * If a class already has ``__eq__``, ``__ne__``, ``__lt__``,
+        ``__le__``, ``__gt__``, ``__ge__``, or ``__hash__`` defined, this
+        decorator will overwrite them.
+
+      * If ``set_hash`` is ``False``, this will not overwrite
+        ``__hash__``.
+
+      * This class uses Python 2 None-comparison semantics. If you yield
+        None and it is compared to a non-None type, None will always be
+        less than the other object.
+
+    Raises:
+        TypeError: If the class does not have a ``_cmp_iter`` method
+
+    """
+    if not has_method(cls, "_cmp_iter"):
+        raise TypeError("'%s' doesn't define _cmp_iter()." % cls.__name__)
+
+    # comparison operators are implemented in terms of lazy_eq and lazy_lt
+    def eq(self, other):
+        if self is other:
+            return True
+        return (other is not None) and lazy_eq(self._cmp_iter, other._cmp_iter)
+
+    def lt(self, other):
+        if self is other:
+            return False
+        return (other is not None) and lazy_lt(self._cmp_iter, other._cmp_iter)
+
+    def ne(self, other):
+        if self is other:
+            return False
+        return (other is None) or not lazy_eq(self._cmp_iter, other._cmp_iter)
+
+    def gt(self, other):
+        if self is other:
+            return False
+        return (other is None) or lazy_lt(other._cmp_iter, self._cmp_iter)
+
+    def le(self, other):
+        if self is other:
+            return True
+        return (other is not None) and not lazy_lt(other._cmp_iter,
+                                                   self._cmp_iter)
+
+    def ge(self, other):
+        if self is other:
+            return True
+        return (other is None) or not lazy_lt(self._cmp_iter, other._cmp_iter)
+
+    def h(self):
+        return hash(tuplify(self._cmp_iter))
+
+    def add_func_to_class(name, func):
+        """Add a function to a class with a particular name."""
+        func.__name__ = name
+        setattr(cls, name, func)
+
+    add_func_to_class("__eq__", eq)
+    add_func_to_class("__ne__", ne)
+    add_func_to_class("__lt__", lt)
+    add_func_to_class("__le__", le)
+    add_func_to_class("__gt__", gt)
+    add_func_to_class("__ge__", ge)
+    if set_hash:
+        add_func_to_class("__hash__", h)
+
+    return cls
+
+
+@lazy_lexicographic_ordering
+class HashableMap(MutableMapping):
     """This is a hashable, comparable dictionary.  Hash is performed on
        a tuple of the values in the dictionary."""
 
@@ -286,8 +507,9 @@ class HashableMap(collections.MutableMapping):
     def __delitem__(self, key):
         del self.dict[key]
 
-    def _cmp_key(self):
-        return tuple(sorted(self.values()))
+    def _cmp_iter(self):
+        for _, v in sorted(self.items()):
+            yield v
 
     def copy(self):
         """Type-agnostic clone method.  Preserves subclass type."""
@@ -367,28 +589,39 @@ def match_predicate(*args):
     return match
 
 
-def dedupe(sequence):
-    """Yields a stable de-duplication of an hashable sequence
+def dedupe(sequence, key=None):
+    """Yields a stable de-duplication of an hashable sequence by key
 
     Args:
         sequence: hashable sequence to be de-duplicated
+        key: callable applied on values before uniqueness test; identity
+            by default.
 
     Returns:
         stable de-duplication of the sequence
+
+    Examples:
+
+        Dedupe a list of integers:
+
+            [x for x in dedupe([1, 2, 1, 3, 2])] == [1, 2, 3]
+
+            [x for x in llnl.util.lang.dedupe([1,-2,1,3,2], key=abs)] == [1, -2, 3]
     """
     seen = set()
     for x in sequence:
-        if x not in seen:
+        x_key = x if key is None else key(x)
+        if x_key not in seen:
             yield x
-            seen.add(x)
+            seen.add(x_key)
 
 
 def pretty_date(time, now=None):
     """Convert a datetime or timestamp to a pretty, relative date.
 
     Args:
-        time (datetime or int): date to print prettily
-        now (datetime): dateimte for 'now', i.e. the date the pretty date
+        time (datetime.datetime or int): date to print prettily
+        now (datetime.datetime): datetime for 'now', i.e. the date the pretty date
             is relative to (default is datetime.now())
 
     Returns:
@@ -462,7 +695,7 @@ def pretty_string_to_date(date_str, now=None):
             or be a *pretty date* (like ``yesterday`` or ``two months ago``)
 
     Returns:
-        (datetime): datetime object corresponding to ``date_str``
+        (datetime.datetime): datetime object corresponding to ``date_str``
     """
 
     pattern = {}
@@ -619,6 +852,9 @@ class LazyReference(object):
 def load_module_from_file(module_name, module_path):
     """Loads a python module from the path of the corresponding file.
 
+    If the module is already in ``sys.modules`` it will be returned as
+    is and not reloaded.
+
     Args:
         module_name (str): namespace where the python module will be loaded,
             e.g. ``foo.bar``
@@ -631,17 +867,28 @@ def load_module_from_file(module_name, module_path):
         ImportError: when the module can't be loaded
         FileNotFoundError: when module_path doesn't exist
     """
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+
+    # This recipe is adapted from https://stackoverflow.com/a/67692/771663
     if sys.version_info[0] == 3 and sys.version_info[1] >= 5:
         import importlib.util
         spec = importlib.util.spec_from_file_location(  # novm
             module_name, module_path)
         module = importlib.util.module_from_spec(spec)  # novm
-        spec.loader.exec_module(module)
-    elif sys.version_info[0] == 3 and sys.version_info[1] < 5:
-        import importlib.machinery
-        loader = importlib.machinery.SourceFileLoader(  # novm
-            module_name, module_path)
-        module = loader.load_module()
+        # The module object needs to exist in sys.modules before the
+        # loader executes the module code.
+        #
+        # See https://docs.python.org/3/reference/import.html#loading
+        sys.modules[spec.name] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            try:
+                del sys.modules[spec.name]
+            except KeyError:
+                pass
+            raise
     elif sys.version_info[0] == 2:
         import imp
         module = imp.load_source(module_name, module_path)
@@ -673,6 +920,13 @@ def uniq(sequence):
     return uniq_list
 
 
+def star(func):
+    """Unpacks arguments for use with Multiprocessing mapping functions"""
+    def _wrapper(args):
+        return func(*args)
+    return _wrapper
+
+
 class Devnull(object):
     """Null stream with less overhead than ``os.devnull``.
 
@@ -680,3 +934,78 @@ class Devnull(object):
     """
     def write(self, *_):
         pass
+
+
+def elide_list(line_list, max_num=10):
+    """Takes a long list and limits it to a smaller number of elements,
+       replacing intervening elements with '...'.  For example::
+
+           elide_list([1,2,3,4,5,6], 4)
+
+       gives::
+
+           [1, 2, 3, '...', 6]
+    """
+    if len(line_list) > max_num:
+        return line_list[:max_num - 1] + ['...'] + line_list[-1:]
+    else:
+        return line_list
+
+
+@contextlib.contextmanager
+def nullcontext(*args, **kwargs):
+    """Empty context manager.
+    TODO: replace with contextlib.nullcontext() if we ever require python 3.7.
+    """
+    yield
+
+
+class UnhashableArguments(TypeError):
+    """Raise when an @memoized function receives unhashable arg or kwarg values."""
+
+
+def enum(**kwargs):
+    """Return an enum-like class.
+
+    Args:
+        **kwargs: explicit dictionary of enums
+    """
+    return type('Enum', (object,), kwargs)
+
+
+class TypedMutableSequence(MutableSequence):
+    """Base class that behaves like a list, just with a different type.
+
+    Client code can inherit from this base class:
+
+        class Foo(TypedMutableSequence):
+            pass
+
+    and later perform checks based on types:
+
+        if isinstance(l, Foo):
+            # do something
+    """
+    def __init__(self, iterable):
+        self.data = list(iterable)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+    def __setitem__(self, key, value):
+        self.data[key] = value
+
+    def __delitem__(self, key):
+        del self.data[key]
+
+    def __len__(self):
+        return len(self.data)
+
+    def insert(self, index, item):
+        self.data.insert(index, item)
+
+    def __repr__(self):
+        return repr(self.data)
+
+    def __str__(self):
+        return str(self.data)

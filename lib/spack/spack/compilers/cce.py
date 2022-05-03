@@ -1,7 +1,9 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
+
+import os
 
 from spack.compiler import Compiler, UnsupportedCompilerFlag
 from spack.version import ver
@@ -27,10 +29,10 @@ class Cce(Compiler):
     PrgEnv = 'PrgEnv-cray'
     PrgEnv_compiler = 'cce'
 
-    link_paths = {'cc': 'cce/cc',
-                  'cxx': 'cce/case-insensitive/CC',
-                  'f77': 'cce/ftn',
-                  'fc': 'cce/ftn'}
+    link_paths = {'cc': os.path.join('cce', 'cc'),
+                  'cxx': os.path.join('cce', 'case-insensitive', 'CC'),
+                  'f77': os.path.join('cce', 'ftn'),
+                  'fc': os.path.join('cce', 'ftn')}
 
     @property
     def is_clang_based(self):
@@ -64,6 +66,12 @@ class Cce(Compiler):
         if self.is_clang_based:
             return '-std=c++11'
         return "-h std=c++11"
+
+    @property
+    def cxx14_flag(self):
+        if self.is_clang_based:
+            return '-std=c++14'
+        return "-h std=c++14"
 
     @property
     def c99_flag(self):
@@ -112,3 +120,9 @@ class Cce(Compiler):
         if self.is_clang_based:
             return "-fPIC"
         return "-h PIC"
+
+    @property
+    def stdcxx_libs(self):
+        # Cray compiler wrappers link to the standard C++ library
+        # without additional flags.
+        return ()

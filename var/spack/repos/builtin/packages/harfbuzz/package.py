@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -9,9 +9,10 @@ from spack import *
 class Harfbuzz(AutotoolsPackage):
     """The Harfbuzz package contains an OpenType text shaping engine."""
     homepage = "https://github.com/harfbuzz/harfbuzz"
-    url      = "http://www.freedesktop.org/software/harfbuzz/release/harfbuzz-0.9.37.tar.bz2"
+    url      = "https://github.com/harfbuzz/harfbuzz/releases/download/2.9.1/harfbuzz-2.9.1.tar.xz"
     git      = "https://github.com/harfbuzz/harfbuzz.git"
 
+    version('2.9.1', sha256='0edcc980f526a338452180e701d6aba6323aef457b6686976a7d17ccbddc51cf')
     version('2.6.8', sha256='6648a571a27f186e47094121f0095e1b809e918b3037c630c7f38ffad86e3035')
     version('2.3.1', sha256='f205699d5b91374008d6f8e36c59e419ae2d9a7bb8c5d9f34041b9a5abcae468')
     version('2.1.3', sha256='613264460bb6814c3894e3953225c5357402915853a652d40b4230ce5faf0bee')
@@ -25,7 +26,7 @@ class Harfbuzz(AutotoolsPackage):
     depends_on("glib")
     depends_on("icu4c")
     depends_on("freetype")
-    depends_on("cairo")
+    depends_on("cairo+pdf+ft")
     depends_on("zlib")
     depends_on("graphite2", when='+graphite2')
 
@@ -40,12 +41,21 @@ class Harfbuzz(AutotoolsPackage):
 
         return url.format(version)
 
+    # Function borrowed from superlu
+    def flag_handler(self, name, flags):
+        flags = list(flags)
+        if name == 'cxxflags':
+            flags.append(self.compiler.cxx11_flag)
+        if name == 'cflags':
+            if '%pgi' not in self.spec and self.spec.satisfies('%gcc@:5.1'):
+                flags.append('-std=gnu99')
+        return (None, None, flags)
+
     def configure_args(self):
         args = []
         # disable building of gtk-doc files following #9771
         args.append('--disable-gtk-doc-html')
         true = which('true')
-        args.append('CXXFLAGS={0}'.format(self.compiler.cxx11_flag))
         args.append('GTKDOC_CHECK={0}'.format(true))
         args.append('GTKDOC_CHECK_PATH={0}'.format(true))
         args.append('GTKDOC_MKPDF={0}'.format(true))

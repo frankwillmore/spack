@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -10,6 +10,7 @@ import re
 import sys
 
 import llnl.util.tty as tty
+import llnl.util.tty.color as color
 
 import spack
 import spack.cmd
@@ -23,28 +24,34 @@ section = 'developer'
 level = 'long'
 
 #: output options
-show_options = ('asp', 'output', 'solutions')
+show_options = ('asp', 'opt', 'output', 'solutions')
 
 
 def setup_parser(subparser):
     # Solver arguments
     subparser.add_argument(
-        '--show', action='store', default=('solutions'),
-        help="outputs: a list with any of: "
-        "%s (default), all" % ', '.join(show_options))
+        '--show', action='store', default='opt,solutions',
+        help="select outputs: comma-separated list of: \n"
+        "  asp          asp program text\n"
+        "  opt          optimization criteria for best model\n"
+        "  output       raw clingo output\n"
+        "  solutions    models found by asp program\n"
+        "  all          all of the above"
+    )
     subparser.add_argument(
         '--models', action='store', type=int, default=0,
         help="number of solutions to search (default 0 for all)")
 
     # Below are arguments w.r.t. spec display (like spack spec)
     arguments.add_common_arguments(
-        subparser, ['long', 'very_long', 'install_status'])
+        subparser, ['long', 'very_long', 'install_status']
+    )
     subparser.add_argument(
         '-y', '--yaml', action='store_const', dest='format', default=None,
-        const='yaml', help='print concrete spec as YAML')
+        const='yaml', help='print concrete spec as yaml')
     subparser.add_argument(
         '-j', '--json', action='store_const', dest='format', default=None,
-        const='json', help='print concrete spec as YAML')
+        const='json', help='print concrete spec as json')
     subparser.add_argument(
         '-c', '--cover', action='store',
         default='nodes', choices=['nodes', 'edges', 'paths'],
@@ -64,6 +71,8 @@ def setup_parser(subparser):
     subparser.add_argument(
         'specs', nargs=argparse.REMAINDER, help="specs of packages")
 
+    spack.cmd.common.arguments.add_concretizer_args(subparser)
+
 
 def solve(parser, args):
     # these are the same options as `spack spec`
@@ -79,11 +88,11 @@ def solve(parser, args):
         'hashes': args.long or args.very_long
     }
 
-    # process dump options
-    dump = re.split(r'\s*,\s*', args.show)
-    if 'all' in dump:
-        dump = show_options
-    for d in dump:
+    # process output options
+    show = re.split(r'\s*,\s*', args.show)
+    if 'all' in show:
+        show = show_options
+    for d in show:
         if d not in show_options:
             raise ValueError(
                 "Invalid option for '--show': '%s'\nchoose from: (%s)"
@@ -95,38 +104,50 @@ def solve(parser, args):
 
     specs = spack.cmd.parse_specs(args.specs)
 
-    # dump generated ASP program
-    result = asp.solve(
-        specs, dump=dump, models=models, timers=args.timers, stats=args.stats
+    # set up solver parameters
+    # Note: reuse and other concretizer prefs are passed as configuration
+    solver = asp.Solver()
+    output = sys.stdout if "asp" in show else None
+    result = solver.solve(
+        specs,
+        out=output,
+        models=models,
+        timers=args.timers,
+        stats=args.stats,
+        setup_only=(set(show) == {'asp'})
     )
-    if 'solutions' not in dump:
+    if 'solutions' not in show:
         return
 
     # die if no solution was found
-    # TODO: we need to be able to provide better error messages than this
-    if not result.satisfiable:
-        result.print_cores()
-        tty.die("Unsatisfiable spec.")
+    result.raise_if_unsat()
 
-    # dump the solutions as concretized specs
-    if 'solutions' in dump:
-        best = min(result.answers)
+    # show the solutions as concretized specs
+    if 'solutions' in show:
+        opt, _, _ = min(result.answers)
 
-        opt, _, answer = best
-        if not args.format:
-            tty.msg("Best of %d answers." % result.nmodels)
-            tty.msg("Optimization: %s" % opt)
+        if ("opt" in show) and (not args.format):
+            tty.msg("Best of %d considered solutions." % result.nmodels)
+            tty.msg("Optimization Criteria:")
 
-        # iterate over roots from command line
-        for input_spec in specs:
-            key = input_spec.name
-            if input_spec.virtual:
-                providers = [spec.name for spec in answer.values()
-                             if spec.package.provides(key)]
-                key = providers[0]
+            maxlen = max(len(s[2]) for s in result.criteria)
+            color.cprint(
+                "@*{  Priority  Criterion %sInstalled  ToBuild}" % ((maxlen - 10) * " ")
+            )
 
-            spec = answer[key]
+            fmt = "  @K{%%-8d}  %%-%ds%%9s  %%7s" % maxlen
+            for i, (idx, build_idx, name) in enumerate(result.criteria, 1):
+                color.cprint(
+                    fmt % (
+                        i,
+                        name,
+                        "-" if build_idx is None else opt[idx],
+                        opt[idx] if build_idx is None else opt[build_idx],
+                    )
+                )
+            print()
 
+        for spec in result.specs:
             # With -y, just print YAML to output.
             if args.format == 'yaml':
                 # use write because to_yaml already has a newline.

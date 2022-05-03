@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -7,12 +7,16 @@ from spack import *
 
 
 class RXde(RPackage):
-    """XDE: a Bayesian hierarchical model for cross-study analysis of
-       differential gene expression."""
+    """a Bayesian hierarchical model for cross-study analysis of
+       differential gene expression.
 
-    homepage = "https://bioconductor.org/packages/XDE"
-    git      = "https://git.bioconductor.org/packages/XDE.git"
+    Multi-level model for cross-study detection of differential gene
+    expression."""
 
+    bioc = "XDE"
+
+    version('2.40.0', commit='bfc3c54787aec97b70bef7b99a6adc75d2cf5ed2')
+    version('2.36.0', commit='0277f9dffbd7d1880be77cb8581fc614501b3293')
     version('2.30.0', commit='058af6f1e431522778f970bf61f834620d3d7dd7')
     version('2.28.0', commit='b8cc7d0840ce1324644e8b4a750fbb964884498b')
     version('2.26.0', commit='7bf6368037937c53542447175061c2e2059ee3be')
@@ -24,9 +28,9 @@ class RXde(RPackage):
     depends_on('r-biocgenerics', type=('build', 'run'))
     depends_on('r-genefilter', type=('build', 'run'))
     depends_on('r-gtools', type=('build', 'run'))
-    depends_on('r-mergemaid', type=('build', 'run'))
     depends_on('r-mvtnorm', type=('build', 'run'))
+    depends_on('r-rcolorbrewer', type=('build', 'run'), when='@2.24.0:')
+    depends_on('r-genemeta', type=('build', 'run'), when='@2.24.0:')
+    depends_on('r-siggenes', type=('build', 'run'), when='@2.24.0:')
 
-    depends_on('r-rcolorbrewer', when='@2.24.0:', type=('build', 'run'))
-    depends_on('r-genemeta', when='@2.24.0:', type=('build', 'run'))
-    depends_on('r-siggenes', when='@2.24.0:', type=('build', 'run'))
+    depends_on('r-mergemaid', type=('build', 'run'), when='@:2.30.0')

@@ -1,15 +1,16 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from spack import *
+from spack.pkg.builtin.boost import Boost
 
 
 class Tophat(AutotoolsPackage):
     """Spliced read mapper for RNA-Seq."""
 
-    homepage = "http://ccb.jhu.edu/software/tophat/index.shtml"
+    homepage = "https://ccb.jhu.edu/software/tophat/index.shtml"
     url      = "https://github.com/infphilo/tophat/archive/v2.1.1.tar.gz"
 
     version('2.1.2', sha256='15016b82255dad085d4ee7d970e50f0e53a280d466335553d47790d8344ff4b1')
@@ -25,9 +26,17 @@ class Tophat(AutotoolsPackage):
     depends_on('m4',       type='build')
 
     depends_on('boost@1.47:')
+
+    # TODO: replace this with an explicit list of components of Boost,
+    # for instance depends_on('boost +filesystem')
+    # See https://github.com/spack/spack/pull/22303 for reference
+    depends_on(Boost.with_default_variants)
     depends_on('bowtie2', type='run')
 
     parallel = False
+
+    def setup_build_environment(self, env):
+        env.append_flags("CFLAGS", self.compiler.cxx98_flag)
 
     def configure_args(self):
         return ["--with-boost={0}".format(self.spec['boost'].prefix)]

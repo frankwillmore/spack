@@ -1,30 +1,26 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
+import itertools as it
 import os
+import sys
+
 import pytest
-from six.moves.urllib.error import URLError
+
+import llnl.util.filesystem as fs
 
 import spack.ci as ci
-import spack.main as spack_main
+import spack.ci_needs_workaround as cinw
+import spack.ci_optimization as ci_opt
 import spack.config as cfg
+import spack.environment as ev
+import spack.error
 import spack.paths as spack_paths
 import spack.spec as spec
-import spack.util.web as web_util
 import spack.util.gpg
-
-import spack.ci_optimization as ci_opt
-import spack.ci_needs_workaround as cinw
 import spack.util.spack_yaml as syaml
-import itertools as it
-import collections
-try:
-    # dynamically import to keep vermin from complaining
-    collections_abc = __import__('collections.abc')
-except ImportError:
-    collections_abc = collections
 
 
 @pytest.fixture
@@ -53,8 +49,8 @@ def test_urlencode_string():
     assert(s_enc == 'Spack+Test+Project')
 
 
-@pytest.mark.skipif(not spack.util.gpg.has_gpg(),
-                    reason='This test requires gpg')
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
 def test_import_signing_key(mock_gnupghome):
     signing_key_dir = spack_paths.mock_gpg_keys_path
     signing_key_path = os.path.join(signing_key_dir, 'package-signing-key')
@@ -88,88 +84,199 @@ def test_configure_compilers(mutable_config):
     assert_present(last_config)
 
 
-def test_get_concrete_specs(config, mock_packages):
-    root_spec = (
-        'eJztkk1uwyAQhfc5BbuuYjWObSKuUlURYP5aDBjjBPv0RU7iRI6qpKuqUtnxzZvRwHud'
-        'YxSt1oCMyuVoBdI5MN8paxDYZK/ZbkLYU3kqAuA0Dtz6BgGtTB8XdG87BCgzwXbwXArY'
-        'CxYQiLtqXxUTpLZxSjN/mWlwwxAQlJ7v8wpFtsvK1UXSOUyTjvRKB2Um7LBPhZD0l1md'
-        'xJ7VCATfszOiXGOR9np7vwDn7lCMS8SXQNf3RCtyBTVzzNTMUMXmfWrFeR+UngEAEncS'
-        'ASjKwZcid7ERNldthBxjX46mMD2PsJnlYXDs2rye3l+vroOkJJ54SXgZPklLRQmx61sm'
-        'cgKNVFRO0qlpf2pojq1Ro7OG56MY+Bgc1PkIo/WkaT8OVcrDYuvZkJdtBl/+XCZ+NQBJ'
-        'oKg1h6X/VdXRoyE2OWeH6lCXZdHGrauUZAWFw/YJ/0/39OefN3F4Kle3cXjYsF684ZqG'
-        'Tbap/uPwbRx+YPStIQ8bvgA7G6YE'
-    )
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
+def test_get_concrete_specs(config, mutable_mock_env_path, mock_packages):
+    e = ev.create('test1')
+    e.add('dyninst')
+    e.concretize()
 
-    dep_builds = 'diffutils;libiconv'
-    spec_map = ci.get_concrete_specs(root_spec, 'bzip2', dep_builds, 'NONE')
+    dyninst_hash = None
+    hash_dict = {}
 
-    assert('root' in spec_map and 'deps' in spec_map)
+    with e as active_env:
+        for s in active_env.all_specs():
+            hash_dict[s.name] = s.build_hash()
+            if s.name == 'dyninst':
+                dyninst_hash = s.build_hash()
 
-    nonconc_root_spec = 'archive-files'
-    dep_builds = ''
-    spec_map = ci.get_concrete_specs(
-        nonconc_root_spec, 'archive-files', dep_builds, 'FIND_ANY')
+        assert(dyninst_hash)
 
-    assert('root' in spec_map and 'deps' in spec_map)
-    assert('archive-files' in spec_map)
+        spec_map = ci.get_concrete_specs(
+            active_env, dyninst_hash, 'dyninst', 'NONE')
+        assert 'root' in spec_map
 
+        concrete_root = spec_map['root']
+        assert(concrete_root.build_hash() == dyninst_hash)
 
-def test_register_cdash_build():
-    build_name = 'Some pkg'
-    base_url = 'http://cdash.fake.org'
-    project = 'spack'
-    site = 'spacktests'
-    track = 'Experimental'
+        s = spec.Spec('dyninst')
+        print('nonconc spec name: {0}'.format(s.name))
 
-    with pytest.raises(URLError):
-        ci.register_cdash_build(build_name, base_url, project, site, track)
+        spec_map = ci.get_concrete_specs(
+            active_env, s.name, s.name, 'FIND_ANY')
+
+        assert 'root' in spec_map
 
 
-def test_relate_cdash_builds(config, mock_packages):
-    root_spec = (
-        'eJztkk1uwyAQhfc5BbuuYjWObSKuUlURYP5aDBjjBPv0RU7iRI6qpKuqUtnxzZvRwHud'
-        'YxSt1oCMyuVoBdI5MN8paxDYZK/ZbkLYU3kqAuA0Dtz6BgGtTB8XdG87BCgzwXbwXArY'
-        'CxYQiLtqXxUTpLZxSjN/mWlwwxAQlJ7v8wpFtsvK1UXSOUyTjvRKB2Um7LBPhZD0l1md'
-        'xJ7VCATfszOiXGOR9np7vwDn7lCMS8SXQNf3RCtyBTVzzNTMUMXmfWrFeR+UngEAEncS'
-        'ASjKwZcid7ERNldthBxjX46mMD2PsJnlYXDs2rye3l+vroOkJJ54SXgZPklLRQmx61sm'
-        'cgKNVFRO0qlpf2pojq1Ro7OG56MY+Bgc1PkIo/WkaT8OVcrDYuvZkJdtBl/+XCZ+NQBJ'
-        'oKg1h6X/VdXRoyE2OWeH6lCXZdHGrauUZAWFw/YJ/0/39OefN3F4Kle3cXjYsF684ZqG'
-        'Tbap/uPwbRx+YPStIQ8bvgA7G6YE'
-    )
+class FakeWebResponder(object):
+    def __init__(self, response_code=200, content_to_read=[]):
+        self._resp_code = response_code
+        self._content = content_to_read
+        self._read = [False for c in content_to_read]
 
-    dep_builds = 'diffutils;libiconv'
-    spec_map = ci.get_concrete_specs(root_spec, 'bzip2', dep_builds, 'NONE')
-    cdash_api_url = 'http://cdash.fake.org'
-    job_build_id = '42'
-    cdash_project = 'spack'
-    cdashids_mirror_url = 'https://my.fake.mirror'
+    def open(self, request):
+        return self
 
-    with pytest.raises(web_util.SpackWebError):
-        ci.relate_cdash_builds(spec_map, cdash_api_url, job_build_id,
-                               cdash_project, cdashids_mirror_url)
+    def getcode(self):
+        return self._resp_code
 
-    # Just make sure passing None for build id doesn't throw exceptions
-    ci.relate_cdash_builds(spec_map, cdash_api_url, None, cdash_project,
-                           cdashids_mirror_url)
+    def read(self, length=None):
+
+        if len(self._content) <= 0:
+            return None
+
+        if not self._read[-1]:
+            return_content = self._content[-1]
+            if length:
+                self._read[-1] = True
+            else:
+                self._read.pop()
+                self._content.pop()
+            return return_content
+
+        self._read.pop()
+        self._content.pop()
+        return None
 
 
-def test_read_write_cdash_ids(config, tmp_scope, tmpdir, mock_packages):
-    working_dir = tmpdir.join('working_dir')
-    mirror_dir = working_dir.join('mirror')
-    mirror_url = 'file://{0}'.format(mirror_dir.strpath)
+def test_download_and_extract_artifacts(tmpdir, monkeypatch, working_env):
+    os.environ.update({
+        'GITLAB_PRIVATE_TOKEN': 'faketoken',
+    })
 
-    mirror_cmd = spack_main.SpackCommand('mirror')
-    mirror_cmd('add', '--scope', tmp_scope, 'test_mirror', mirror_url)
+    url = 'https://www.nosuchurlexists.itsfake/artifacts.zip'
+    working_dir = os.path.join(tmpdir.strpath, 'repro')
+    test_artifacts_path = os.path.join(
+        spack_paths.test_path, 'data', 'ci', 'gitlab', 'artifacts.zip')
 
-    mock_spec = spec.Spec('archive-files').concretized()
-    orig_cdashid = '42'
+    with open(test_artifacts_path, 'rb') as fd:
+        fake_responder = FakeWebResponder(content_to_read=[fd.read()])
 
-    ci.write_cdashid_to_mirror(orig_cdashid, mock_spec, mirror_url)
+    monkeypatch.setattr(ci, 'build_opener', lambda handler: fake_responder)
 
-    # Now read it back
-    read_cdashid = ci.read_cdashid_from_mirror(mock_spec, mirror_url)
+    ci.download_and_extract_artifacts(url, working_dir)
 
-    assert(str(read_cdashid) == orig_cdashid)
+    found_zip = fs.find(working_dir, 'artifacts.zip')
+    assert(len(found_zip) == 0)
+
+    found_install = fs.find(working_dir, 'install.sh')
+    assert(len(found_install) == 1)
+
+    fake_responder._resp_code = 400
+    with pytest.raises(spack.error.SpackError):
+        ci.download_and_extract_artifacts(url, working_dir)
+
+
+def test_setup_spack_repro_version(tmpdir, capfd, last_two_git_commits,
+                                   monkeypatch):
+    c1, c2 = last_two_git_commits
+    repro_dir = os.path.join(tmpdir.strpath, 'repro')
+    spack_dir = os.path.join(repro_dir, 'spack')
+    os.makedirs(spack_dir)
+
+    prefix_save = spack.paths.prefix
+    monkeypatch.setattr(spack.paths, 'prefix', '/garbage')
+
+    ret = ci.setup_spack_repro_version(repro_dir, c2, c1)
+    out, err = capfd.readouterr()
+
+    assert(not ret)
+    assert('Unable to find the path' in err)
+
+    monkeypatch.setattr(spack.paths, 'prefix', prefix_save)
+
+    monkeypatch.setattr(spack.util.executable, 'which', lambda cmd: None)
+
+    ret = ci.setup_spack_repro_version(repro_dir, c2, c1)
+    out, err = capfd.readouterr()
+
+    assert(not ret)
+    assert('requires git' in err)
+
+    class mock_git_cmd(object):
+        def __init__(self, *args, **kwargs):
+            self.returncode = 0
+            self.check = None
+
+        def __call__(self, *args, **kwargs):
+            if self.check:
+                self.returncode = self.check(*args, **kwargs)
+            else:
+                self.returncode = 0
+
+    git_cmd = mock_git_cmd()
+
+    monkeypatch.setattr(spack.util.executable, 'which', lambda cmd: git_cmd)
+
+    git_cmd.check = lambda *a, **k: 1 if len(a) > 2 and a[2] == c2 else 0
+    ret = ci.setup_spack_repro_version(repro_dir, c2, c1)
+    out, err = capfd.readouterr()
+
+    assert(not ret)
+    assert('Missing commit: {0}'.format(c2) in err)
+
+    git_cmd.check = lambda *a, **k: 1 if len(a) > 2 and a[2] == c1 else 0
+    ret = ci.setup_spack_repro_version(repro_dir, c2, c1)
+    out, err = capfd.readouterr()
+
+    assert(not ret)
+    assert('Missing commit: {0}'.format(c1) in err)
+
+    git_cmd.check = lambda *a, **k: 1 if a[0] == 'clone' else 0
+    ret = ci.setup_spack_repro_version(repro_dir, c2, c1)
+    out, err = capfd.readouterr()
+
+    assert(not ret)
+    assert('Unable to clone' in err)
+
+    git_cmd.check = lambda *a, **k: 1 if a[0] == 'checkout' else 0
+    ret = ci.setup_spack_repro_version(repro_dir, c2, c1)
+    out, err = capfd.readouterr()
+
+    assert(not ret)
+    assert('Unable to checkout' in err)
+
+    git_cmd.check = lambda *a, **k: 1 if 'merge' in a else 0
+    ret = ci.setup_spack_repro_version(repro_dir, c2, c1)
+    out, err = capfd.readouterr()
+
+    assert(not ret)
+    assert('Unable to merge {0}'.format(c1) in err)
+
+
+@pytest.mark.parametrize(
+    "obj, proto",
+    [
+        ({}, []),
+    ],
+)
+def test_ci_opt_argument_checking(obj, proto):
+    """Check that matches() and subkeys() return False when `proto` is not a dict."""
+    assert not ci_opt.matches(obj, proto)
+    assert not ci_opt.subkeys(obj, proto)
+
+
+@pytest.mark.parametrize(
+    "yaml",
+    [
+        {'extends': 1},
+    ],
+)
+def test_ci_opt_add_extends_non_sequence(yaml):
+    """Check that add_extends() exits if 'extends' is not a sequence."""
+    yaml_copy = yaml.copy()
+    ci_opt.add_extends(yaml, None)
+    assert yaml == yaml_copy
 
 
 def test_ci_workarounds():
@@ -202,8 +309,7 @@ def test_ci_workarounds():
                 'paths': [
                     'jobs_scratch_dir',
                     'cdash_report',
-                    name + '.spec.yaml',
-                    name + '.cdashid',
+                    name + '.spec.json',
                     name
                 ],
                 'when': 'always'
@@ -320,3 +426,52 @@ def test_ci_workarounds():
                 ci_opt.sort_yaml_obj(actual), default_flow_style=True)
 
             assert(predicted == actual)
+
+
+def test_get_spec_filter_list(mutable_mock_env_path, config, mutable_mock_repo):
+    """Test that given an active environment and list of touched pkgs,
+       we get the right list of possibly-changed env specs"""
+    e1 = ev.create('test')
+    e1.add('mpileaks')
+    e1.add('hypre')
+    e1.concretize()
+
+    """
+    Concretizing the above environment results in the following graphs:
+
+    mpileaks -> mpich (provides mpi virtual dep of mpileaks)
+             -> callpath -> dyninst -> libelf
+                                    -> libdwarf -> libelf
+                         -> mpich (provides mpi dep of callpath)
+
+    hypre -> openblas-with-lapack (provides lapack and blas virtual deps of hypre)
+    """
+
+    touched = ['libdwarf']
+
+    # traversing both directions from libdwarf in the graphs depicted
+    # above results in the following possibly affected env specs:
+    # mpileaks, callpath, dyninst, libdwarf, and libelf.  Unaffected
+    # specs are mpich, plus hypre and it's dependencies.
+
+    affected_specs = ci.get_spec_filter_list(e1, touched)
+    affected_pkg_names = set([s.name for s in affected_specs])
+    expected_affected_pkg_names = set(['mpileaks',
+                                       'callpath',
+                                       'dyninst',
+                                       'libdwarf',
+                                       'libelf'])
+
+    assert affected_pkg_names == expected_affected_pkg_names
+
+
+@pytest.mark.regression('29947')
+def test_affected_specs_on_first_concretization(mutable_mock_env_path, config):
+    e = ev.create('first_concretization')
+    e.add('hdf5~mpi~szip')
+    e.add('hdf5~mpi+szip')
+    e.concretize()
+
+    affected_specs = spack.ci.get_spec_filter_list(e, ['zlib'])
+    hdf5_specs = [s for s in affected_specs if s.name == 'hdf5']
+    assert len(hdf5_specs) == 2

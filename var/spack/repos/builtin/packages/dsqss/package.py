@@ -1,11 +1,12 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 
-from spack import *
 import sys
+
+from spack import *
 
 
 class Dsqss(CMakePackage):
@@ -26,6 +27,11 @@ class Dsqss(CMakePackage):
     depends_on('py-scipy', type=('build', 'run'))
     depends_on('py-toml', type=('build', 'run'))
 
+    depends_on('py-setuptools', type='build')
+    depends_on('py-pip', type='build')
+    depends_on('py-wheel', type='build')
+
+    patch('spackpip.patch')
     patch('ctest.patch')
 
     extends('python')
@@ -45,3 +51,23 @@ class Dsqss(CMakePackage):
         ]
 
         return args
+
+    def test(self):
+        test01 = find(self.prefix.share, '01_spindimer')[0]
+        copy(join_path(test01, 'std.toml'), '.')
+        # prepare
+        pythonexe = self.spec['python'].command.path
+        opts = [self.spec.prefix.bin.dla_pre, 'std.toml']
+        self.run_test(pythonexe, options=opts)
+        # (mpi) run
+        opts = []
+        if self.spec.satisfies('+mpi'):
+            exe_name = self.spec['mpi'].prefix.bin.mpirun
+            opts.extend(['-n', '1'])
+            opts.append(join_path(self.prefix.bin, 'dla'))
+        else:
+            exe_name = 'dla'
+        opts.append('param.in')
+        expected = ['R ene = -3.74300000e-01 2.96344394e-03']
+        self.run_test(exe_name, options=opts)
+        self.run_test('cat', options=['sample.log'], expected=expected)

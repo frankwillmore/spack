@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -13,9 +13,10 @@ class RSnpstats(RPackage):
        extends the earlier snpMatrix package, allowing for uncertainty in
        genotypes."""
 
-    homepage = "https://bioconductor.org/packages/snpStats"
-    git      = "https://git.bioconductor.org/packages/snpStats.git"
+    bioc = "snpStats"
 
+    version('1.44.0', commit='72392dab4e75de2da459b1e95f1d48947811597b')
+    version('1.40.0', commit='5fcac6f3b4bb6f45c19dff8f3089b693b74a56ce')
     version('1.34.0', commit='e31cdfb18a9e12d70d6a3e8e6fbf7cf8faa3ea5b')
     version('1.32.0', commit='7c31158183b4e39da6dc30c7da275acc36b2e32f')
     version('1.30.0', commit='0dc1e4246f015feaf2579d60268b10ab5149ce09')

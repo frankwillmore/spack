@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -12,28 +12,27 @@
   default unorderd dict.
 
 """
-import ctypes
 import collections
+import ctypes
+import re
 from typing import List  # novm
 
-from ordereddict_backport import OrderedDict
-from six import string_types, StringIO
-
 import ruamel.yaml as yaml
-from ruamel.yaml import RoundTripLoader, RoundTripDumper
+from ruamel.yaml import RoundTripDumper, RoundTripLoader
+from six import StringIO, string_types
 
-from llnl.util.tty.color import colorize, clen, cextra
+from llnl.util.compat import Mapping
+from llnl.util.tty.color import cextra, clen, colorize
 
 import spack.error
 
 # Only export load and dump
 __all__ = ['load', 'dump', 'SpackYAMLError']
 
+
 # Make new classes so we can add custom attributes.
 # Also, use OrderedDict instead of just dict.
-
-
-class syaml_dict(OrderedDict):
+class syaml_dict(collections.OrderedDict):
     def __repr__(self):
         mappings = ('%r: %r' % (k, v) for k, v in self.items())
         return '{%s}' % ', '.join(mappings)
@@ -178,6 +177,12 @@ class OrderedLineDumper(RoundTripDumper):
         """Make the dumper NEVER print YAML aliases."""
         return True
 
+    def represent_data(self, data):
+        result = super(OrderedLineDumper, self).represent_data(data)
+        if data is None:
+            result.value = syaml_str("null")
+        return result
+
     def represent_str(self, data):
         if hasattr(data, 'override') and data.override:
             data = data + ':'
@@ -255,19 +260,18 @@ class LineAnnotationDumper(OrderedLineDumper):
     def represent_data(self, data):
         """Force syaml_str to be passed through with marks."""
         result = super(LineAnnotationDumper, self).represent_data(data)
-        if isinstance(result.value, string_types):
+        if data is None:
+            result.value = syaml_str("null")
+        elif isinstance(result.value, string_types):
             result.value = syaml_str(data)
         if markable(result.value):
             mark(result.value, data)
         return result
 
-    def write_stream_start(self):
-        super(LineAnnotationDumper, self).write_stream_start()
-        _annotations.append(colorize('@K{---}'))
-
     def write_line_break(self):
         super(LineAnnotationDumper, self).write_line_break()
-        if not self.saved:
+        if self.saved is None:
+            _annotations.append(colorize('@K{---}'))
             return
 
         # append annotations at the end of each line
@@ -315,7 +319,10 @@ def dump_annotated(data, stream=None, *args, **kwargs):
 
     sio = StringIO()
     yaml.dump(data, sio, *args, **kwargs)
-    lines = sio.getvalue().rstrip().split('\n')
+
+    # write_line_break() is not called by YAML for empty lines, so we
+    # skip empty lines here with \n+.
+    lines = re.split(r"\n+", sio.getvalue().rstrip())
 
     getvalue = None
     if stream is None:
@@ -344,7 +351,7 @@ def sorted_dict(dict_like):
     """
     result = syaml_dict(sorted(dict_like.items()))
     for key, value in result.items():
-        if isinstance(value, collections.Mapping):
+        if isinstance(value, Mapping):
             result[key] = sorted_dict(value)
     return result
 

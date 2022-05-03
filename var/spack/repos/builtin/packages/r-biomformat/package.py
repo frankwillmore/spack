@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -19,9 +19,10 @@ class RBiomformat(RPackage):
        includes S4 classes and methods, as well as extensions of common core
        functions/methods."""
 
-    homepage = "https://bioconductor.org/packages/biomformat"
-    git      = "https://git.bioconductor.org/packages/biomformat.git"
+    bioc = "biomformat"
 
+    version('1.22.0', commit='ab7c6411a038fec010baa72e663f362fd972cb34')
+    version('1.18.0', commit='dc18859c139f4d76805adb6f01e199573cdd5a8b')
     version('1.12.0', commit='6e946123bb59da262cbb0c17dc5ab49328a89d4a')
     version('1.10.1', commit='e67c6f4b70201f748fa49a4938e1af0cd0613f09')
     version('1.8.0', commit='acd207377b24e4d8310eaff06c16dcfe6c04509a')

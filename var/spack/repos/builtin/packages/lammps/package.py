@@ -1,10 +1,10 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
+import datetime as dt
 
 from spack import *
-import datetime as dt
 
 
 class Lammps(CMakePackage, CudaPackage):
@@ -14,13 +14,28 @@ class Lammps(CMakePackage, CudaPackage):
     See https://github.com/spack/spack/pull/5342 for a detailed
     discussion.
     """
-    homepage = "http://lammps.sandia.gov/"
+    homepage = "https://lammps.sandia.gov/"
     url      = "https://github.com/lammps/lammps/archive/patch_1Sep2017.tar.gz"
     git      = "https://github.com/lammps/lammps.git"
 
     tags = ['ecp', 'ecp-apps']
 
     version('master', branch='master')
+    version('20220107', sha256='fbf6c6814968ae0d772d7b6783079ff4f249a8faeceb39992c344969e9f1edbb')
+    version('20211214', sha256='9f7b1ee2394678c1a6baa2c158a62345680a952eee251783e3c246b3f12db4c9')
+    version('20211027', sha256='c06f682fcf9d5921ca90c857a104e90fba0fe65decaac9732745e4da49281938')
+    version('20210929.2', sha256='26586c1e82356b60e40359ee474818003c7788214bfe2bfe9128a3dbe5200b4d')
+    version('20210929.1', sha256='3b792e20864bf88b855332486996f2c540deabb4e3507e48fa4ee96ad79615ec')
+    version('20210929', sha256='5132f332b582be3006510562ef10bac9ef76d760f34fc08a2af556416c57cf4c')
+    version('20210920', sha256='e3eba96933c1dd3177143c7ac837cae69faceba196948fbad2970425db414d8c')
+    version('20210831', sha256='532c42576a79d72682deaf43225ca773ed9f9e35deb484a82f91905b6cba23ec')
+    version('20210730', sha256='c5e998c8282a835d2bcba4fceffe3cecdf9aed9bdf79fa9c945af573e632f6e7')
+    version('20210728', sha256='6b844d2c3f7170a59d36fbf761483aa0c63d95eda254d00fe4d10542403abe36')
+    version('20210702', sha256='4fdd8ca2dbde8809c0048716650b73ae1f840e22ebe24b25f6f7a499377fea57')
+    version('20210514', sha256='74d9c4386f2181b15a024314c42b7a0b0aaefd3b4b947aeca00fe07e5b2f3317')
+    version('20210408', sha256='1645147b7777de4f616b8232edf0b597868084f969c777fa0a757949c3f71f56')
+    version('20210310', sha256='25708378dbeccf794bc5045aceb84380bf4a3ca03fc8e5d150a26ca88d371474')
+    version('20201029', sha256='759705e16c1fedd6aa6e07d028cc0c78d73c76b76736668420946a74050c3726')
     version('20200721', sha256='845bfeddb7b667799a1a5dbc166b397d714c3d2720316604a979d3465b4190a9')
     version('20200630', sha256='413cbfabcc1541a339c7a4ab5693fbeb768f46bb1250640ba94686c6e90922fc')
     version('20200505', sha256='c49d77fd602d28ebd8cf10f7359b9fc4d14668c72039028ed7792453d416de73')
@@ -53,18 +68,31 @@ class Lammps(CMakePackage, CudaPackage):
     version('20170901', sha256='5d88d4e92f4e0bb57c8ab30e0d20de556830af820223778b9967bec2184efd46')
 
     def url_for_version(self, version):
-        vdate = dt.datetime.strptime(str(version), "%Y%m%d")
-        return "https://github.com/lammps/lammps/archive/patch_{0}.tar.gz".format(
-            vdate.strftime("%d%b%Y").lstrip('0'))
+        split_ver = str(version).split('.')
+        vdate = dt.datetime.strptime(split_ver[0], "%Y%m%d")
+        if len(split_ver) < 2:
+            update = ""
+        else:
+            update = "_update{0}".format(split_ver[1])
+        return "https://github.com/lammps/lammps/archive/patch_{0}{1}.tar.gz".format(
+            vdate.strftime("%d%b%Y").lstrip('0'), update)
 
     supported_packages = ['asphere', 'body', 'class2', 'colloid', 'compress',
                           'coreshell', 'dipole', 'granular', 'kspace',
                           'kokkos', 'latte', 'manybody', 'mc', 'meam', 'misc',
-                          'molecule', 'mpiio', 'peri', 'poems', 'python',
-                          'qeq', 'replica', 'rigid', 'shock', 'snap', 'spin',
-                          'srd', 'user-atc', 'user-h5md', 'user-lb',
-                          'user-meamc', 'user-misc', 'user-netcdf', 'user-omp',
-                          'user-reaxc', 'voronoi', 'opt']
+                          'mliap', 'molecule', 'mpiio', 'opt', 'peri', 'poems',
+                          'python', 'qeq', 'replica', 'rigid', 'shock', 'snap',
+                          'spin', 'srd', 'user-atc', 'user-adios',
+                          'user-awpmd', 'user-bocs', 'user-cgsdk',
+                          'user-colvars', 'user-diffraction', 'user-dpd',
+                          'user-drude', 'user-eff', 'user-fep', 'user-h5md',
+                          'user-lb', 'user-manifold', 'user-meamc',
+                          'user-mesodpd', 'user-mesont', 'user-mgpt',
+                          'user-misc', 'user-mofff', 'user-netcdf', 'user-omp',
+                          'user-phonon', 'user-plumed', 'user-ptm', 'user-qtb',
+                          'user-reaction', 'user-reaxc', 'user-sdpd',
+                          'user-smd', 'user-smtbq', 'user-sph', 'user-tally',
+                          'user-uef', 'user-yaff', 'voronoi']
 
     for pkg in supported_packages:
         variant(pkg, default=False,
@@ -79,6 +107,8 @@ class Lammps(CMakePackage, CudaPackage):
             description='Build with png support')
     variant('ffmpeg', default=True,
             description='Build with ffmpeg support')
+    variant('kim', default=True,
+            description='Build with KIM support')
     variant('openmp', default=True, description='Build with OpenMP')
     variant('opencl', default=False, description='Build with OpenCL')
     variant('exceptions', default=False,
@@ -106,10 +136,14 @@ class Lammps(CMakePackage, CudaPackage):
     depends_on('mpi', when='+user-h5md')
     depends_on('hdf5', when='+user-h5md')
     depends_on('jpeg', when='+jpeg')
+    depends_on('kim-api', when='+kim')
     depends_on('libpng', when='+png')
     depends_on('ffmpeg', when='+ffmpeg')
-    depends_on('kokkos+deprecated_code+shared@3.0', when='@20200303+kokkos')
+    depends_on('kokkos+deprecated_code+shared@3.0.00', when='@20200303+kokkos')
     depends_on('kokkos+shared@3.1:', when='@20200505:+kokkos')
+    depends_on('adios2', when='+user-adios')
+    depends_on('plumed', when='+user-plumed')
+    depends_on('eigen@3:', when='+user-smd')
 
     conflicts('+cuda', when='+opencl')
     conflicts('+body', when='+poems@:20180628')
@@ -122,11 +156,28 @@ class Lammps(CMakePackage, CudaPackage):
     conflicts('+user-misc', when='~manybody')
     conflicts('%gcc@9:', when='@:20200303+openmp')
     conflicts('+kokkos', when='@:20200227')
-    conflicts('+meam', when='@20181212:')
-    conflicts('+user-meamc', when='@:20181212')
+    conflicts(
+        '+meam', when='@20181212:',
+        msg='+meam was removed after @20181212, use +user-meamc instead')
+    conflicts(
+        '+user-meamc', when='@:20181212',
+        msg='+user-meamc only added @20181212, use +meam instead')
+    conflicts(
+        '+user-reaction', when='@:20200303',
+        msg='+user-reaction only supported for version 20200505 and later')
+    conflicts('+mliap', when='~snap')
+    conflicts(
+        '+user-adios +mpi', when='^adios2~mpi',
+        msg='With +user-adios, mpi setting for adios2 and lammps must be the same')
+    conflicts(
+        '+user-adios ~mpi', when='^adios2+mpi',
+        msg='With +user-adios, mpi setting for adios2 and lammps must be the same')
 
     patch("lib.patch", when="@20170901")
     patch("660.patch", when="@20170922")
+    patch("https://github.com/lammps/lammps/commit/562300996285fdec4ef74542383276898555af06.patch?full_index=1",
+          sha256="e6f1b62bbfdc79d632f4cea98019202d0dd25aa4ae61a70df1164cb4f290df79",
+          when="@20200721 +cuda")
 
     root_cmakelists_dir = 'cmake'
 
@@ -140,15 +191,13 @@ class Lammps(CMakePackage, CudaPackage):
             pkg_prefix = 'PKG'
 
         args = [
-            '-DBUILD_SHARED_LIBS={0}'.format(
-                'ON' if '+lib' in spec else 'OFF'),
-            '-DLAMMPS_EXCEPTIONS={0}'.format(
-                'ON' if '+exceptions' in spec else 'OFF'),
+            self.define_from_variant('BUILD_SHARED_LIBS', 'lib'),
+            self.define_from_variant('LAMMPS_EXCEPTIONS', 'exceptions'),
             '-D{0}_MPI={1}'.format(
                 mpi_prefix,
                 'ON' if '+mpi' in spec else 'OFF'),
-            '-DBUILD_OMP={0}'.format(
-                'ON' if '+openmp' in spec else 'OFF'),
+            self.define_from_variant('BUILD_OMP', 'openmp'),
+            '-DENABLE_TESTING=ON'
         ]
         if spec.satisfies('+cuda'):
             args.append('-DPKG_GPU=ON')
@@ -156,8 +205,7 @@ class Lammps(CMakePackage, CudaPackage):
             cuda_arch = spec.variants['cuda_arch'].value
             if cuda_arch != 'none':
                 args.append('-DGPU_ARCH=sm_{0}'.format(cuda_arch[0]))
-            args.append('-DCUDA_MPS_SUPPORT={0}'.format(
-                'ON' if '+cuda_mps' in spec else 'OFF'))
+            args.append(self.define_from_variant('CUDA_MPS_SUPPORT', 'cuda_mps'))
         elif spec.satisfies('+opencl'):
             args.append('-DPKG_GPU=ON')
             args.append('-DGPU_API=opencl')
@@ -167,12 +215,13 @@ class Lammps(CMakePackage, CudaPackage):
         if spec.satisfies('@20180629:+lib'):
             args.append('-DBUILD_LIB=ON')
 
-        args.append('-DWITH_JPEG={0}'.format(
-            'ON' if '+jpeg' in spec else 'OFF'))
-        args.append('-DWITH_PNG={0}'.format(
-            'ON' if '+png' in spec else 'OFF'))
-        args.append('-DWITH_FFMPEG={0}'.format(
-            'ON' if '+ffmpeg' in spec else 'OFF'))
+        if spec.satisfies('%aocc'):
+            cxx_flags = '-Ofast -mfma -fvectorize -funroll-loops'
+            args.append(self.define('CMAKE_CXX_FLAGS_RELEASE', cxx_flags))
+
+        args.append(self.define_from_variant('WITH_JPEG', 'jpeg'))
+        args.append(self.define_from_variant('WITH_PNG', 'png'))
+        args.append(self.define_from_variant('WITH_FFMPEG', 'ffmpeg'))
 
         for pkg in self.supported_packages:
             opt = '-D{0}_{1}'.format(pkg_prefix, pkg.upper())
@@ -180,19 +229,36 @@ class Lammps(CMakePackage, CudaPackage):
                 args.append('{0}=ON'.format(opt))
             else:
                 args.append('{0}=OFF'.format(opt))
+        if '+kim' in spec:
+            args.append('-DPKG_KIM=ON')
         if '+kspace' in spec:
             if '^fftw' in spec:
                 args.append('-DFFT=FFTW3')
             if '^mkl' in spec:
                 args.append('-DFFT=MKL')
             if '^amdfftw' in spec:
-                fftw_prefix = spec['amdfftw'].prefix
-                args.append('-DFFTW_HOME={0}'.format(fftw_prefix))
-                args.append('-DFFTW_INCLUDE_DIRS={0}'
-                            .format(fftw_prefix.include))
-                args.append('-DFFTW_LIBRARY_DIRS={0}'.format(fftw_prefix.lib))
+                # If FFTW3 is selected, then CMake will try to detect, if threaded
+                # FFTW libraries are available and enable them by default.
+                args.append(self.define('FFT', 'FFTW3'))
+                # Using the -DFFT_SINGLE setting trades off a little accuracy
+                # for reduced memory use and parallel communication costs
+                # for transposing 3d FFT data.
+                args.append(self.define('FFT_SINGLE', True))
+
         if '+kokkos' in spec:
             args.append('-DEXTERNAL_KOKKOS=ON')
+        if '+user-adios' in spec:
+            args.append('-DADIOS2_DIR={0}'.format(self.spec['adios2'].prefix))
+        if '+user-plumed' in spec:
+            args.append('-DDOWNLOAD_PLUMED=no')
+            if '+shared' in self.spec['plumed']:
+                args.append('-DPLUMED_MODE=shared')
+            else:
+                args.append('-DPLUMED_MODE=static')
+        if '+user-smd' in spec:
+            args.append('-DDOWNLOAD_EIGEN3=no')
+            args.append('-DEIGEN3_INCLUDE_DIR={0}'.format(
+                self.spec['eigen'].prefix.include))
 
         return args
 

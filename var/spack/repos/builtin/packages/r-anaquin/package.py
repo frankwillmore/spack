@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -15,9 +15,10 @@ class RAnaquin(RPackage):
        source library for quantitative analysis, modelling and visualization of
        spike-in controls."""
 
-    homepage = "https://bioconductor.org/packages/Anaquin"
-    git      = "https://git.bioconductor.org/packages/Anaquin.git"
+    bioc = "Anaquin"
 
+    version('2.18.0', commit='c8e3df3e299c32daac0dda23cea59a18673d886b')
+    version('2.14.0', commit='d0a34c931a0e72080bff91dacb37dbbe26b45386')
     version('2.8.0', commit='f591d420740b77881ae0a4c16b208c63d460c601')
     version('2.6.1', commit='22b6c71697fe1e2db8f6d18f77728d0fd96fa6d6')
     version('2.4.0', commit='0d6ae80ff622151a782e4774ca274f06024a71d2')

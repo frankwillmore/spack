@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -12,20 +12,24 @@ class Bart(MakefilePackage, CudaPackage):
     homepage = "https://mrirecon.github.io/bart/"
     url      = "https://github.com/mrirecon/bart/archive/v0.5.00.tar.gz"
 
+    maintainers = ['glennpj']
+
+    version('0.7.00', sha256='a16afc4b632c703d95b5c34e47acd82fafc19f51f9aff442373eecfef08bfc41')
     version('0.6.00', sha256='dbbd33d1e3ed3324fe21f90a3b62cb51765fe369f21df100b46a32004928f18d')
     version('0.5.00', sha256='30eedcda0f0ef3808157542e0d67df5be49ee41e4f41487af5c850632788f643')
 
     # patch to fix build with MKL
-    patch('https://github.com/mrirecon/bart/commit/b62ca4972d5ac41a44217a5c27123c15daae74db.patch',
-          sha256='8fd1be181da928448da750b32d45ee6dce7ba6af0424617c4f8d653cf3f05445',
+    patch('https://github.com/mrirecon/bart/commit/b62ca4972d5ac41a44217a5c27123c15daae74db.patch?full_index=1',
+          sha256='501ca985df2324fc02e32cc4ffb32ce5c235fe83a59f5b853eb78ad0f2d6629c',
           when='@0.5.00')
 
     # patch to fix Makefile for openblas and cuda
-    patch('Makefile.patch')
+    patch('Makefile.patch', when='@:0.6.00')
+    patch('Makefile-0.7.00.patch', when='@0.7.00:')
 
     # patch to set path to bart
     patch('bart_path-0.5.00.patch', when='@0.5.00')
-    patch('bart_path-0.6.00.patch', when='@0.6.00')
+    patch('bart_path-0.6.00.patch', when='@0.6.00:')
 
     depends_on('libpng')
     depends_on('fftw')
@@ -44,9 +48,9 @@ class Bart(MakefilePackage, CudaPackage):
         if spec['blas'].name == 'openblas':
             env['OPENBLAS'] = '1'
 
-        if spec['blas'].name in ['intel-mkl', 'intel-parallel-studio']:
+        if '^mkl' in spec:
             env['MKL'] = '1'
-            env['MKL_BASE'] = env['MKLROOT']
+            env['MKL_BASE'] = spec['mkl'].prefix.mkl
         else:
             env['BLAS_BASE'] = spec['blas'].prefix
 
@@ -60,18 +64,15 @@ class Bart(MakefilePackage, CudaPackage):
             env['GPUARCH_FLAGS'] = ' '.join(self.cuda_flags(cuda_arch))
 
     def install(self, spec, prefix):
-        python_dir = join_path(prefix,
-                               spec['python'].package.site_packages_dir)
-
         make('install')
 
         install_tree('scripts', prefix.scripts)
         install_tree('matlab', prefix.matlab)
         install('startup.m', prefix)
 
-        install('python/bart.py', python_dir)
-        install('python/cfl.py', python_dir)
-        install('python/wslsupport.py', python_dir)
+        install('python/bart.py', python_platlib)
+        install('python/cfl.py', python_platlib)
+        install('python/wslsupport.py', python_platlib)
 
         if '^python@3:' in spec:
             install('python/bartview3.py', join_path(prefix.bin, 'bartview'))

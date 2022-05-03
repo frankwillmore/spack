@@ -1,9 +1,10 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from spack import *
+from spack.pkg.builtin.boost import Boost
 
 
 class Gunrock(CMakePackage, CudaPackage):
@@ -52,6 +53,11 @@ class Gunrock(CMakePackage, CudaPackage):
     depends_on('googletest', when='+google_tests')
     depends_on('lcov', when='+code_coverage')
     depends_on('boost@1.58.0:', when='+boost')
+
+    # TODO: replace this with an explicit list of components of Boost,
+    # for instance depends_on('boost +filesystem')
+    # See https://github.com/spack/spack/pull/22303 for reference
+    depends_on(Boost.with_default_variants, when='+boost')
     depends_on('metis', when='+metis')
 
     conflicts('cuda_arch=none', when='+cuda',
@@ -60,23 +66,17 @@ See "spack info gunrock"')
 
     def cmake_args(self):
         spec = self.spec
-        args = []
-        args.extend([
-                    '-DGUNROCK_BUILD_LIB={0}'.format(
-                        'ON' if '+lib' in spec else 'OFF'),
-                    '-DGUNROCK_BUILD_SHARED_LIBS={0}'.format(
-                        'ON' if '+shared_libs' in spec else 'OFF'),
-                    '-DGUNROCK_BUILD_TESTS={0}'.format(
-                        'ON' if '+tests' in spec else 'OFF'),
-                    '-DGUNROCK_MGPU_TESTS={0}'.format(
-                        'ON' if '+mgpu_tests' in spec else 'OFF'),
-                    '-DCUDA_VERBOSE_PTXAS={0}'.format(
-                        'ON' if '+cuda_verbose_ptxas' in spec else 'OFF'),
-                    '-DGUNROCK_GOOGLE_TESTS={0}'.format(
-                        'ON' if '+google_tests' in spec else 'OFF'),
-                    '-DGUNROCK_CODE_COVERAGE={0}'.format(
-                        'ON' if '+code_coverage' in spec else 'OFF'),
-                    ])
+        from_variant = self.define_from_variant
+
+        args = [
+            from_variant('GUNROCK_BUILD_LIB', 'lib'),
+            from_variant('GUNROCK_BUILD_SHARED_LIBS', 'shared_libs'),
+            from_variant('GUNROCK_BUILD_TESTS', 'tests'),
+            from_variant('GUNROCK_MGPU_TESTS', 'mgpu_tests'),
+            from_variant('CUDA_VERBOSE_PTXAS', 'cuda_verbose_ptxas'),
+            from_variant('GUNROCK_GOOGLE_TESTS', 'google_tests'),
+            from_variant('GUNROCK_CODE_COVERAGE', 'code_coverage'),
+        ]
 
         # turn off auto detect, which undoes custom cuda arch options
         args.append('-DCUDA_AUTODETECT_GENCODE=OFF')

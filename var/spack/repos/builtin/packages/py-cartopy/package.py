@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -14,7 +14,7 @@ class PyCartopy(PythonPackage):
 
     maintainers = ['adamjstewart']
 
-    # Skip test files in cartopy.tests
+    # Tests require extra dependencies, skip them in 'import_modules'
     import_modules = [
         'cartopy', 'cartopy.sphinxext', 'cartopy.io', 'cartopy.geodesic',
         'cartopy.examples', 'cartopy.mpl', 'cartopy.feature'
@@ -38,8 +38,8 @@ class PyCartopy(PythonPackage):
     depends_on('py-six@1.3.0:',     type=('build', 'run'))
     depends_on('py-futures', when='^python@:2', type=('build', 'run'))
     depends_on('geos@3.3.3:')
-    depends_on('proj@4.9.0:5', when='@:0.16.0')
-    depends_on('proj@4.9:',    when='@0.17.0:')
+    depends_on('proj@4.9:5', when='@:0.16.0')
+    depends_on('proj@4.9:7', when='@0.17.0:')
 
     # Optional dependecies
     depends_on('py-pyepsg@0.4.0:',     type=('build', 'run'), when='+epsg')
@@ -51,8 +51,6 @@ class PyCartopy(PythonPackage):
     depends_on('py-scipy@0.10:',       type=('build', 'run'), when='+plotting')
 
     patch('proj6.patch', when='@0.17.0')
-
-    phases = ['build_ext', 'install']
 
     def setup_build_environment(self, env):
         # Needed for `spack install --test=root py-cartopy`
@@ -75,24 +73,3 @@ class PyCartopy(PythonPackage):
     # Needed for `spack test run py-foo` where `py-foo` depends on `py-cartopy`
     def setup_dependent_run_environment(self, env, dependent_spec):
         self.setup_build_environment(env)
-
-    def build_ext_args(self, spec, prefix):
-        args = [
-            spec['geos'].headers.include_flags,
-            spec['geos'].libs.search_flags,
-            spec['proj'].headers.include_flags,
-            spec['proj'].libs.search_flags,
-        ]
-
-        if '+plotting' in spec:
-            args.extend([
-                spec['gdal'].headers.include_flags,
-                spec['gdal'].libs.search_flags,
-            ])
-
-        return args
-
-    # Tests need to be re-added since `phases` was overridden
-    run_after('install')(
-        PythonPackage._run_default_install_time_test_callbacks)
-    run_after('install')(PythonPackage.sanity_check_prefix)

@@ -14,8 +14,7 @@
 #   ~/.spack/modules.yaml
 # -------------------------------------------------------------------------
 modules:
-  enable:
-    - tcl
+  # Paths to check when creating modules for all module sets
   prefix_inspections:
     bin:
       - PATH
@@ -25,16 +24,6 @@ modules:
       - MANPATH
     share/aclocal:
       - ACLOCAL_PATH
-    lib:
-      - LIBRARY_PATH
-    lib64:
-      - LIBRARY_PATH
-    include:
-      - C_INCLUDE_PATH
-      - CPLUS_INCLUDE_PATH
-      # The INCLUDE env variable specifies paths to look for
-      # .mod file for Intel Fortran compilers
-      - INCLUDE
     lib/pkgconfig:
       - PKG_CONFIG_PATH
     lib64/pkgconfig:
@@ -44,6 +33,23 @@ modules:
     '':
       - CMAKE_PREFIX_PATH
 
-  lmod:
-    hierarchy:
-      - mpi
+  # These are configurations for the module set named "default"
+  default:
+    # Where to install modules
+    roots:
+     tcl:    $spack/share/spack/modules
+     lmod:   $spack/share/spack/lmod
+    # What type of modules to use
+    enable:
+      - tcl
+
+    tcl:
+      all:
+        autoload: none
+
+    # Default configurations if lmod is enabled
+    lmod:
+      all:
+        autoload: direct
+      hierarchy:
+        - mpi

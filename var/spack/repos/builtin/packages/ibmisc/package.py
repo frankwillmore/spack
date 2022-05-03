@@ -1,9 +1,10 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from spack import *
+from spack.pkg.builtin.boost import Boost
 
 
 class Ibmisc(CMakePackage):
@@ -46,16 +47,21 @@ class Ibmisc(CMakePackage):
     depends_on('py-numpy', when='+python', type=('build', 'run'))
     depends_on('boost', when='+boost')
 
+    # TODO: replace this with an explicit list of components of Boost,
+    # for instance depends_on('boost +filesystem')
+    # See https://github.com/spack/spack/pull/22303 for reference
+    depends_on(Boost.with_default_variants, when='+boost')
+
     # Build dependencies
     depends_on('doxygen', type='build')
 
     def cmake_args(self):
-        spec = self.spec
         return [
-            '-DUSE_EVERYTRACE=%s' % ('YES' if '+everytrace' in spec else 'NO'),
-            '-DUSE_PROJ4=%s' % ('YES' if '+proj' in spec else 'NO'),
-            '-DUSE_BLITZ=%s' % ('YES' if '+blitz' in spec else 'NO'),
-            '-DUSE_NETCDF=%s' % ('YES' if '+netcdf' in spec else 'NO'),
-            '-DUSE_BOOST=%s' % ('YES' if '+boost' in spec else 'NO'),
-            '-DUSE_UDUNITS2=%s' % ('YES' if '+udunits2' in spec else 'NO'),
-            '-DUSE_GTEST=%s' % ('YES' if '+googletest' in spec else 'NO')]
+            self.define_from_variant('USE_EVERYTRACE', 'everytrace'),
+            self.define_from_variant('USE_PROJ4', 'proj'),
+            self.define_from_variant('USE_BLITZ', 'blitz'),
+            self.define_from_variant('USE_NETCDF', 'netcdf'),
+            self.define_from_variant('USE_BOOST', 'boost'),
+            self.define_from_variant('USE_UDUNITS2', 'udunits2'),
+            self.define_from_variant('USE_GTEST', 'googletest'),
+        ]

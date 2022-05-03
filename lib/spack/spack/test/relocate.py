@@ -1,24 +1,35 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
-import collections
+import os
 import os.path
-import platform
 import re
 import shutil
+import sys
+
+import pytest
 
 import llnl.util.filesystem
-import pytest
-import spack.architecture
+
 import spack.concretize
-import spack.hooks.sbang as sbang
 import spack.paths
+import spack.platforms
 import spack.relocate
 import spack.spec
 import spack.store
 import spack.tengine
 import spack.util.executable
+
+pytestmark = pytest.mark.skipif(sys.platform == 'win32',
+                                reason="Tests fail on Windows")
+
+
+def skip_unless_linux(f):
+    return pytest.mark.skipif(
+        str(spack.platforms.real_host()) != 'linux',
+        reason='implementation currently requires linux'
+    )(f)
 
 
 def rpaths_for(new_binary):
@@ -66,47 +77,6 @@ def source_file(tmpdir, is_relocatable):
     return src
 
 
-@pytest.fixture(params=['which_found', 'installed', 'to_be_installed'])
-def expected_patchelf_path(request, mutable_database, monkeypatch):
-    """Prepare the stage to tests different cases that can occur
-    when searching for patchelf.
-    """
-    case = request.param
-
-    # Mock the which function
-    which_fn = {
-        'which_found': lambda x: collections.namedtuple(
-            '_', ['path']
-        )('/usr/bin/patchelf')
-    }
-    monkeypatch.setattr(
-        spack.util.executable, 'which',
-        which_fn.setdefault(case, lambda x: None)
-    )
-    if case == 'which_found':
-        return '/usr/bin/patchelf'
-
-    # TODO: Mock a case for Darwin architecture
-
-    spec = spack.spec.Spec('patchelf')
-    spec.concretize()
-
-    patchelf_cls = type(spec.package)
-    do_install = patchelf_cls.do_install
-    expected_path = os.path.join(spec.prefix.bin, 'patchelf')
-
-    def do_install_mock(self, **kwargs):
-        do_install(self, fake=True)
-        with open(expected_path):
-            pass
-
-    monkeypatch.setattr(patchelf_cls, 'do_install', do_install_mock)
-    if case == 'installed':
-        spec.package.do_install()
-
-    return expected_path
-
-
 @pytest.fixture()
 def mock_patchelf(tmpdir, mock_executable):
     def _factory(output):
@@ -145,6 +115,66 @@ def hello_world(tmpdir):
 
 
 @pytest.fixture()
+def make_dylib(tmpdir_factory):
+    """Create a shared library with unfriendly qualities.
+
+    - Writes the same rpath twice
+    - Writes its install path as an absolute path
+    """
+    cc = spack.util.executable.which('cc')
+
+    def _factory(abs_install_name="abs", extra_rpaths=[]):
+        assert all(extra_rpaths)
+
+        tmpdir = tmpdir_factory.mktemp(
+            abs_install_name + '-'.join(extra_rpaths).replace('/', '')
+        )
+        src = tmpdir.join('foo.c')
+        src.write("int foo() { return 1; }\n")
+
+        filename = 'foo.dylib'
+        lib = tmpdir.join(filename)
+
+        args = ['-shared', str(src), '-o', str(lib)]
+        rpaths = list(extra_rpaths)
+        if abs_install_name.startswith('abs'):
+            args += ['-install_name', str(lib)]
+        else:
+            args += ['-install_name', '@rpath/' + filename]
+
+        if abs_install_name.endswith('rpath'):
+            rpaths.append(str(tmpdir))
+
+        args.extend('-Wl,-rpath,' + s for s in rpaths)
+
+        cc(*args)
+
+        return (str(tmpdir), filename)
+
+    return _factory
+
+
+@pytest.fixture()
+def make_object_file(tmpdir):
+    cc = spack.util.executable.which('cc')
+
+    def _factory():
+        src = tmpdir.join('bar.c')
+        src.write("int bar() { return 2; }\n")
+
+        filename = 'bar.o'
+        lib = tmpdir.join(filename)
+
+        args = ['-c', str(src), '-o', str(lib)]
+
+        cc(*args)
+
+        return (str(tmpdir), filename)
+
+    return _factory
+
+
+@pytest.fixture()
 def copy_binary():
     """Returns a function that copies a binary somewhere and
     returns the new location.
@@ -160,6 +190,7 @@ def copy_binary():
 @pytest.mark.requires_executables(
     '/usr/bin/gcc', 'patchelf', 'strings', 'file'
 )
+@skip_unless_linux
 def test_file_is_relocatable(source_file, is_relocatable):
     compiler = spack.util.executable.Executable('/usr/bin/gcc')
     executable = str(source_file).replace('.c', '.x')
@@ -173,16 +204,14 @@ def test_file_is_relocatable(source_file, is_relocatable):
 
 
 @pytest.mark.requires_executables('patchelf', 'strings', 'file')
+@skip_unless_linux
 def test_patchelf_is_relocatable():
-    patchelf = spack.relocate._patchelf()
+    patchelf = os.path.realpath(spack.relocate._patchelf())
     assert llnl.util.filesystem.is_exe(patchelf)
     assert spack.relocate.file_is_relocatable(patchelf)
 
 
-@pytest.mark.skipif(
-    platform.system().lower() != 'linux',
-    reason='implementation for MacOS still missing'
-)
+@skip_unless_linux
 def test_file_is_relocatable_errors(tmpdir):
     # The file passed in as argument must exist...
     with pytest.raises(ValueError) as exc_info:
@@ -197,15 +226,6 @@ def test_file_is_relocatable_errors(tmpdir):
         with pytest.raises(ValueError) as exc_info:
             spack.relocate.file_is_relocatable('delete.me')
         assert 'is not an absolute path' in str(exc_info.value)
-
-
-@pytest.mark.skipif(
-    platform.system().lower() != 'linux',
-    reason='implementation for MacOS still missing'
-)
-def test_search_patchelf(expected_patchelf_path):
-    current = spack.relocate._patchelf()
-    assert current == expected_patchelf_path
 
 
 @pytest.mark.parametrize('patchelf_behavior,expected', [
@@ -225,7 +245,8 @@ def test_existing_rpaths(patchelf_behavior, expected, mock_patchelf):
 
 @pytest.mark.parametrize('start_path,path_root,paths,expected', [
     ('/usr/bin/test', '/usr', ['/usr/lib', '/usr/lib64', '/opt/local/lib'],
-     ['$ORIGIN/../lib', '$ORIGIN/../lib64', '/opt/local/lib'])
+     [os.path.join('$ORIGIN', '..', 'lib'), os.path.join('$ORIGIN', '..', 'lib64'),
+     '/opt/local/lib'])
 ])
 def test_make_relative_paths(start_path, path_root, paths, expected):
     relatives = spack.relocate._make_relative(start_path, path_root, paths)
@@ -237,7 +258,8 @@ def test_make_relative_paths(start_path, path_root, paths, expected):
     # and then normalized
     ('/usr/bin/test',
      ['$ORIGIN/../lib', '$ORIGIN/../lib64', '/opt/local/lib'],
-     ['/usr/lib', '/usr/lib64', '/opt/local/lib']),
+     [os.sep + os.path.join('usr', 'lib'), os.sep + os.path.join('usr', 'lib64'),
+      '/opt/local/lib']),
     # Relative path without $ORIGIN
     ('/usr/bin/test', ['../local/lib'], ['../local/lib']),
 ])
@@ -261,6 +283,7 @@ def test_set_elf_rpaths(mock_patchelf):
     assert patchelf in output
 
 
+@skip_unless_linux
 def test_set_elf_rpaths_warning(mock_patchelf):
     # Mock a failing patchelf command and ensure it warns users
     patchelf = mock_patchelf('exit 1')
@@ -272,26 +295,20 @@ def test_set_elf_rpaths_warning(mock_patchelf):
 
 
 @pytest.mark.requires_executables('patchelf', 'strings', 'file', 'gcc')
-@pytest.mark.skipif(
-    platform.system().lower() != 'linux',
-    reason='implementation for MacOS still missing'
-)
+@skip_unless_linux
 def test_replace_prefix_bin(hello_world):
     # Compile an "Hello world!" executable and set RPATHs
     executable = hello_world(rpaths=['/usr/lib', '/usr/lib64'])
 
     # Relocate the RPATHs
-    spack.relocate._replace_prefix_bin(str(executable), '/usr', '/foo')
+    spack.relocate._replace_prefix_bin(str(executable), {b'/usr': b'/foo'})
 
     # Some compilers add rpaths so ensure changes included in final result
     assert '/foo/lib:/foo/lib64' in rpaths_for(executable)
 
 
 @pytest.mark.requires_executables('patchelf', 'strings', 'file', 'gcc')
-@pytest.mark.skipif(
-    platform.system().lower() != 'linux',
-    reason='implementation for MacOS still missing'
-)
+@skip_unless_linux
 def test_relocate_elf_binaries_absolute_paths(
         hello_world, copy_binary, tmpdir
 ):
@@ -316,10 +333,7 @@ def test_relocate_elf_binaries_absolute_paths(
 
 
 @pytest.mark.requires_executables('patchelf', 'strings', 'file', 'gcc')
-@pytest.mark.skipif(
-    platform.system().lower() != 'linux',
-    reason='implementation for MacOS still missing'
-)
+@skip_unless_linux
 def test_relocate_elf_binaries_relative_paths(hello_world, copy_binary):
     # Create an executable, set some RPATHs, copy it to another location
     orig_binary = hello_world(rpaths=['lib', 'lib64', '/opt/local/lib'])
@@ -340,10 +354,7 @@ def test_relocate_elf_binaries_relative_paths(hello_world, copy_binary):
 
 
 @pytest.mark.requires_executables('patchelf', 'strings', 'file', 'gcc')
-@pytest.mark.skipif(
-    platform.system().lower() != 'linux',
-    reason='implementation for MacOS still missing'
-)
+@skip_unless_linux
 def test_make_elf_binaries_relative(hello_world, copy_binary, tmpdir):
     orig_binary = hello_world(rpaths=[
         str(tmpdir.mkdir('lib')), str(tmpdir.mkdir('lib64')), '/opt/local/lib'
@@ -367,10 +378,7 @@ def test_raise_if_not_relocatable(monkeypatch):
 
 
 @pytest.mark.requires_executables('patchelf', 'strings', 'file', 'gcc')
-@pytest.mark.skipif(
-    platform.system().lower() != 'linux',
-    reason='implementation for MacOS still missing'
-)
+@skip_unless_linux
 def test_relocate_text_bin(hello_world, copy_binary, tmpdir):
     orig_binary = hello_world(rpaths=[
         str(tmpdir.mkdir('lib')), str(tmpdir.mkdir('lib64')), '/opt/local/lib'
@@ -382,11 +390,12 @@ def test_relocate_text_bin(hello_world, copy_binary, tmpdir):
     assert not text_in_bin(str(new_binary.dirpath()), new_binary)
 
     # Check this call succeed
+    orig_path_bytes = str(orig_binary.dirpath()).encode('utf-8')
+    new_path_bytes = str(new_binary.dirpath()).encode('utf-8')
+
     spack.relocate.relocate_text_bin(
         [str(new_binary)],
-        str(orig_binary.dirpath()), str(new_binary.dirpath()),
-        spack.paths.spack_root, spack.paths.spack_root,
-        {str(orig_binary.dirpath()): str(new_binary.dirpath())}
+        {orig_path_bytes: new_path_bytes}
     )
 
     # Check original directory is not there anymore and it was
@@ -395,55 +404,68 @@ def test_relocate_text_bin(hello_world, copy_binary, tmpdir):
     assert text_in_bin(str(new_binary.dirpath()), new_binary)
 
 
-def test_relocate_text_bin_raise_if_new_prefix_is_longer():
-    short_prefix = '/short'
-    long_prefix = '/much/longer'
+def test_relocate_text_bin_raise_if_new_prefix_is_longer(tmpdir):
+    short_prefix = b'/short'
+    long_prefix = b'/much/longer'
+    fpath = str(tmpdir.join('fakebin'))
+    with open(fpath, 'w') as f:
+        f.write('/short')
     with pytest.raises(spack.relocate.BinaryTextReplaceError):
         spack.relocate.relocate_text_bin(
-            ['item'], short_prefix, long_prefix, None, None, None
+            [fpath], {short_prefix: long_prefix}
         )
 
 
-@pytest.mark.parametrize("sbang_line", [
-    "#!/bin/bash /path/to/orig/spack/bin/sbang",
-    "#!/bin/sh /orig/layout/root/bin/sbang"
-])
-def test_relocate_text_old_sbang(tmpdir, sbang_line):
-    """Ensure that old and new sbang styles are relocated."""
+@pytest.mark.requires_executables('install_name_tool', 'file', 'cc')
+def test_fixup_macos_rpaths(make_dylib, make_object_file):
+    # For each of these tests except for the "correct" case, the first fixup
+    # should make changes, and the second fixup should be a null-op.
+    fixup_rpath = spack.relocate.fixup_macos_rpath
 
-    old_install_prefix = "/orig/layout/root/orig/install/prefix"
-    new_install_prefix = os.path.join(
-        spack.store.layout.root, "new", "install", "prefix"
-    )
+    no_rpath = []
+    duplicate_rpaths = ['/usr', '/usr']
+    bad_rpath = ['/nonexistent/path']
 
-    # input file with an sbang line
-    original = """\
-{0}
-#!/usr/bin/env python
+    # Non-relocatable library id and duplicate rpaths
+    (root, filename) = make_dylib("abs", duplicate_rpaths)
+    assert fixup_rpath(root, filename)
+    assert not fixup_rpath(root, filename)
 
-/orig/layout/root/orig/install/prefix
-""".format(sbang_line)
+    # Hardcoded but relocatable library id (but we do NOT relocate)
+    (root, filename) = make_dylib("abs_with_rpath", no_rpath)
+    assert not fixup_rpath(root, filename)
 
-    # expected relocation
-    expected = """\
-{0}
-#!/usr/bin/env python
+    # Library id uses rpath but there are extra duplicate rpaths
+    (root, filename) = make_dylib("rpath", duplicate_rpaths)
+    assert fixup_rpath(root, filename)
+    assert not fixup_rpath(root, filename)
 
-{1}
-""".format(sbang.sbang_shebang_line(), new_install_prefix)
+    # Shared library was constructed with relocatable id from the get-go
+    (root, filename) = make_dylib("rpath", no_rpath)
+    assert not fixup_rpath(root, filename)
 
-    path = tmpdir.ensure("path", "to", "file")
-    with path.open("w") as f:
-        f.write(original)
+    # Non-relocatable library id
+    (root, filename) = make_dylib("abs", no_rpath)
+    assert not fixup_rpath(root, filename)
 
-    spack.relocate.relocate_text(
-        [str(path)],
-        "/orig/layout/root",   spack.store.layout.root,
-        old_install_prefix,    new_install_prefix,
-        "/path/to/orig/spack", spack.paths.spack_root,
-        {
-            old_install_prefix: new_install_prefix
-        }
-    )
+    # Relocatable with executable paths and loader paths
+    (root, filename) = make_dylib("rpath", ['@executable_path/../lib',
+                                            '@loader_path'])
+    assert not fixup_rpath(root, filename)
 
-    assert expected == open(str(path)).read()
+    # Non-relocatable library id but nonexistent rpath
+    (root, filename) = make_dylib("abs", bad_rpath)
+    assert fixup_rpath(root, filename)
+    assert not fixup_rpath(root, filename)
+
+    # Duplicate nonexistent rpath will need *two* passes
+    (root, filename) = make_dylib("rpath", bad_rpath * 2)
+    assert fixup_rpath(root, filename)
+    assert fixup_rpath(root, filename)
+    assert not fixup_rpath(root, filename)
+
+    # Test on an object file, which *also* has type 'application/x-mach-binary'
+    # but should be ignored (no ID headers, no RPATH)
+    # (this is a corner case for GCC installation)
+    (root, filename) = make_object_file()
+    assert not fixup_rpath(root, filename)

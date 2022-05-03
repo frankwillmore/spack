@@ -1,19 +1,27 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-import pytest
 import os
+import sys
 
-from spack.main import SpackCommand, SpackCommandError
-import spack.environment as ev
+import pytest
+
 import spack.config
+import spack.environment as ev
+from spack.main import SpackCommand, SpackCommandError
 
 mirror = SpackCommand('mirror')
 env = SpackCommand('env')
 add = SpackCommand('add')
 concretize = SpackCommand('concretize')
+install = SpackCommand('install')
+buildcache = SpackCommand('buildcache')
+uninstall = SpackCommand('uninstall')
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32",
+                                reason="does not run on windows")
 
 
 @pytest.fixture
@@ -33,6 +41,15 @@ def tmp_scope():
 
     with spack.config.override(spack.config.InternalConfigScope(scope_name)):
         yield scope_name
+
+
+def _validate_url(url):
+    return
+
+
+@pytest.fixture(autouse=True)
+def url_check(monkeypatch):
+    monkeypatch.setattr(spack.util.url, 'require_url_format', _validate_url)
 
 
 @pytest.mark.disable_clean_stage_check
@@ -151,7 +168,7 @@ def test_mirror_crud(tmp_scope, capsys):
         # no-op
         output = mirror('set-url', '--scope', tmp_scope,
                         'mirror', 'http://spack.io')
-        assert 'Url already set' in output
+        assert 'No changes made' in output
 
         output = mirror('set-url', '--scope', tmp_scope,
                         '--push', 'mirror', 's3://spack-public')
@@ -160,13 +177,45 @@ def test_mirror_crud(tmp_scope, capsys):
         # no-op
         output = mirror('set-url', '--scope', tmp_scope,
                         '--push', 'mirror', 's3://spack-public')
-        assert 'Url already set' in output
+        assert 'No changes made' in output
+
+        output = mirror('remove', '--scope', tmp_scope, 'mirror')
+        assert 'Removed mirror' in output
+
+        # Test S3 connection info token
+        mirror('add', '--scope', tmp_scope,
+               '--s3-access-token', 'aaaaaazzzzz',
+               'mirror', 's3://spack-public')
+
+        output = mirror('remove', '--scope', tmp_scope, 'mirror')
+        assert 'Removed mirror' in output
+
+        # Test S3 connection info id/key
+        mirror('add', '--scope', tmp_scope,
+               '--s3-access-key-id', 'foo', '--s3-access-key-secret', 'bar',
+               'mirror', 's3://spack-public')
+
+        output = mirror('remove', '--scope', tmp_scope, 'mirror')
+        assert 'Removed mirror' in output
+
+        # Test S3 connection info with endpoint URL
+        mirror('add', '--scope', tmp_scope,
+               '--s3-access-token', 'aaaaaazzzzz',
+               '--s3-endpoint-url', 'http://localhost/',
+               'mirror', 's3://spack-public')
 
         output = mirror('remove', '--scope', tmp_scope, 'mirror')
         assert 'Removed mirror' in output
 
         output = mirror('list', '--scope', tmp_scope)
         assert 'No mirrors configured' in output
+
+        # Test GCS Mirror
+        mirror('add', '--scope', tmp_scope,
+               'mirror', 'gs://spack-test')
+
+        output = mirror('remove', '--scope', tmp_scope, 'mirror')
+        assert 'Removed mirror' in output
 
 
 def test_mirror_nonexisting(tmp_scope):
@@ -183,3 +232,39 @@ def test_mirror_name_collision(tmp_scope):
 
     with pytest.raises(SpackCommandError):
         mirror('add', '--scope', tmp_scope, 'first', '1')
+
+
+def test_mirror_destroy(install_mockery_mutable_config,
+                        mock_packages, mock_fetch, mock_archive,
+                        mutable_config, monkeypatch, tmpdir):
+    # Create a temp mirror directory for buildcache usage
+    mirror_dir = tmpdir.join('mirror_dir')
+    mirror_url = 'file://{0}'.format(mirror_dir.strpath)
+    mirror('add', 'atest', mirror_url)
+
+    spec_name = 'libdwarf'
+
+    # Put a binary package in a buildcache
+    install('--no-cache', spec_name)
+    buildcache('create', '-u', '-a', '-f', '-d', mirror_dir.strpath, spec_name)
+
+    contents = os.listdir(mirror_dir.strpath)
+    assert('build_cache' in contents)
+
+    # Destroy mirror by name
+    mirror('destroy', '-m', 'atest')
+
+    assert(not os.path.exists(mirror_dir.strpath))
+
+    buildcache('create', '-u', '-a', '-f', '-d', mirror_dir.strpath, spec_name)
+
+    contents = os.listdir(mirror_dir.strpath)
+    assert('build_cache' in contents)
+
+    # Destroy mirror by url
+    mirror('destroy', '--mirror-url', mirror_url)
+
+    assert(not os.path.exists(mirror_dir.strpath))
+
+    uninstall('-y', spec_name)
+    mirror('remove', 'atest')

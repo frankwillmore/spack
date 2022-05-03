@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -22,9 +22,10 @@ class RGdsfmt(RPackage):
        GDS file in parallel with multiple R processes supported by the package
        parallel."""
 
-    homepage = "https://bioconductor.org/packages/gdsfmt"
-    git      = "https://git.bioconductor.org/packages/gdsfmt.git"
+    bioc = "gdsfmt"
 
+    version('1.30.0', commit='d27dde6a70bb2295f5bbc8961152b45ccee7a652')
+    version('1.26.1', commit='bd180b21b1ace120035f0da255cbf6f13088f069')
     version('1.20.0', commit='b1fbaba0a5ace3dc45daecc85168651cd85dce00')
     version('1.18.1', commit='b911b953e9db7988e93ec2010b0ab1e384d073c9')
     version('1.16.0', commit='49b011452585e432b983b68466a230c9b71d8a95')

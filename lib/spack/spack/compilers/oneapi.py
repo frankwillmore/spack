@@ -1,7 +1,10 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
+
+import os
+from os.path import dirname
 
 from spack.compiler import Compiler
 
@@ -20,23 +23,24 @@ class Oneapi(Compiler):
     fc_names = ['ifx']
 
     # Named wrapper links within build_env_path
-    link_paths = {'cc': 'oneapi/icx',
-                  'cxx': 'oneapi/icpx',
-                  'f77': 'oneapi/ifx',
-                  'fc': 'oneapi/ifx'}
+    link_paths = {'cc': os.path.join('oneapi', 'icx'),
+                  'cxx': os.path.join('oneapi', 'icpx'),
+                  'f77': os.path.join('oneapi', 'ifx'),
+                  'fc': os.path.join('oneapi', 'ifx')}
 
     PrgEnv = 'PrgEnv-oneapi'
     PrgEnv_compiler = 'oneapi'
 
     version_argument = '--version'
-    version_regex = r'(?:(?:oneAPI DPC\+\+ Compiler)|(?:ifx \(IFORT\))) (\S+)'
+    version_regex = r'(?:(?:oneAPI DPC\+\+(?:\/C\+\+)? Compiler)|(?:\(IFORT\))) (\S+)'
 
     @property
     def verbose_flag(self):
         return "-v"
 
     required_libs = ['libirc', 'libifcore', 'libifcoremt', 'libirng',
-                     'libsvml', 'libintlc', 'libimf']
+                     'libsvml', 'libintlc', 'libimf', 'libsycl',
+                     'libOpenCL']
 
     @property
     def debug_flags(self):
@@ -48,7 +52,7 @@ class Oneapi(Compiler):
 
     @property
     def openmp_flag(self):
-        return "-qopenmp"
+        return "-fiopenmp"
     # There may be some additional options here for offload, e.g. :
     #  -fopenmp-simd           Emit OpenMP code only for SIMD-based constructs.
     #  -fopenmp-targets=<value>
@@ -104,3 +108,11 @@ class Oneapi(Compiler):
     @property
     def stdcxx_libs(self):
         return ('-cxxlib', )
+
+    def setup_custom_environment(self, pkg, env):
+        # workaround bug in icpx driver where it requires sycl-post-link is on the PATH
+        # It is located in the same directory as the driver. Error message:
+        #   clang++: error: unable to execute command:
+        #   Executable "sycl-post-link" doesn't exist!
+        if self.cxx:
+            env.prepend_path('PATH', dirname(self.cxx))

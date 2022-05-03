@@ -1,16 +1,17 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from spack import *
+from spack.pkg.builtin.boost import Boost
 
 
 class Paradiseo(CMakePackage):
     """A C++ white-box object-oriented framework dedicated to the reusable
        design of metaheuristics."""
 
-    homepage = "http://paradiseo.gforge.inria.fr/"
+    homepage = "https://paradiseo.gforge.inria.fr/"
     git      = "https://gforge.inria.fr/git/paradiseo/paradiseo.git"
 
     # Installing from the development version is a better option at this
@@ -31,7 +32,6 @@ class Paradiseo(CMakePackage):
     variant('edo',      default=True,
             description='Compile with (Experimental) EDO module')
 
-    # variant('doc', default=False, description='Compile with documentation')
     variant('openmp',   default=False, description='Enable OpenMP support')
     variant('gnuplot',  default=False, description='Enable GnuPlot support')
 
@@ -40,11 +40,15 @@ class Paradiseo(CMakePackage):
 
     # Optional dependencies
     depends_on("mpi", when="+mpi")
-    depends_on("doxygen", when='+doc', type='build')
     depends_on("gnuplot", when='+gnuplot')
     depends_on("eigen", when='+edo', type='build')
     depends_on("boost~mpi", when='+edo~mpi')
     depends_on("boost+mpi", when='+edo+mpi')
+
+    # TODO: replace this with an explicit list of components of Boost,
+    # for instance depends_on('boost +filesystem')
+    # See https://github.com/spack/spack/pull/22303 for reference
+    depends_on(Boost.with_default_variants, when='+edo')
 
     # Patches
     patch('enable_eoserial.patch')
@@ -53,18 +57,13 @@ class Paradiseo(CMakePackage):
     patch('fix_tutorials.patch')
 
     def cmake_args(self):
-        spec = self.spec
-
         return [
             '-DINSTALL_TYPE:STRING=MIN',
-            '-DMPI:BOOL=%s' % ('TRUE' if '+mpi' in spec else 'FALSE'),
+            self.define_from_variant('MPI', 'mpi'),
             # Note: This requires a C++11 compatible compiler
-            '-DSMP:BOOL=%s' % ('TRUE' if '+smp' in spec else 'FALSE'),
-            '-DEDO:BOOL=%s' % ('TRUE' if '+edo' in spec else 'FALSE'),
-            '-DENABLE_CMAKE_TESTING:BOOL=%s' % (
-                'TRUE' if self.run_tests else 'FALSE'),
-            '-DENABLE_OPENMP:BOOL=%s' % (
-                'TRUE' if '+openmp' in spec else 'FALSE'),
-            '-DENABLE_GNUPLOT:BOOL=%s' % (
-                'TRUE' if '+gnuplot' in spec else 'FALSE')
+            self.define_from_variant('SMP', 'smp'),
+            self.define_from_variant('EDO', 'edo'),
+            self.define('ENABLE_CMAKE_TESTING', self.run_tests),
+            self.define_from_variant('ENABLE_OPENMP', 'openmp'),
+            self.define_from_variant('ENABLE_GNUPLOT', 'gnuplot')
         ]

@@ -1,9 +1,10 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from spack import *
+from spack.pkg.builtin.boost import Boost
 
 
 class Wt(CMakePackage):
@@ -11,7 +12,7 @@ class Wt(CMakePackage):
 
     Wt is a C++ library for developing web applications."""
 
-    homepage = "http://www.webtoolkit.eu/wt"
+    homepage = "https://www.webtoolkit.eu/wt"
     url      = "https://github.com/emweb/wt/archive/3.3.7.tar.gz"
     git      = "https://github.com/emweb/wt.git"
 
@@ -43,6 +44,11 @@ class Wt(CMakePackage):
 
     depends_on('pkgconfig', type='build')
     depends_on('boost@1.46.1:1.65')
+
+    # TODO: replace this with an explicit list of components of Boost,
+    # for instance depends_on('boost +filesystem')
+    # See https://github.com/spack/spack/pull/22303 for reference
+    depends_on(Boost.with_default_variants)
     depends_on('openssl', when='+openssl')
     depends_on('libharu', when='+libharu')
     depends_on('sqlite', when='+sqlite')
@@ -52,8 +58,6 @@ class Wt(CMakePackage):
     depends_on('zlib', when='+zlib')
 
     def cmake_args(self):
-        spec = self.spec
-
         cmake_args = [
             '-DBUILD_EXAMPLES:BOOL=OFF',
             '-DCONNECTOR_FCGI:BOOL=OFF',
@@ -61,17 +65,11 @@ class Wt(CMakePackage):
             '-DENABLE_QT4:BOOL=OFF'
         ]
         cmake_args.extend([
-            '-DENABLE_SSL:BOOL={0}'.format((
-                'ON' if '+openssl' in spec else 'OFF')),
-            '-DENABLE_HARU:BOOL={0}'.format((
-                'ON' if '+libharu' in spec else 'OFF')),
-            '-DENABLE_PANGO:BOOL={0}'.format((
-                'ON' if '+pango' in spec else 'OFF')),
-            '-DENABLE_SQLITE:BOOL={0}'.format((
-                'ON' if '+sqlite' in spec else 'OFF')),
-            '-DENABLE_MYSQL:BOOL={0}'.format((
-                'ON' if '+mariadb' in spec else 'OFF')),
-            '-DENABLE_POSTGRES:BOOL={0}'.format((
-                'ON' if '+postgres' in spec else 'OFF'))
+            self.define_from_variant('ENABLE_SSL', 'openssl'),
+            self.define_from_variant('ENABLE_HARU', 'libharu'),
+            self.define_from_variant('ENABLE_PANGO', 'pango'),
+            self.define_from_variant('ENABLE_SQLITE', 'sqlite'),
+            self.define_from_variant('ENABLE_MYSQL', 'mariadb'),
+            self.define_from_variant('ENABLE_POSTGRES', 'postgresql')
         ])
         return cmake_args

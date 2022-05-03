@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -16,7 +16,7 @@ class SalmonTddft(CMakePackage):
     with norm-conserving pseudopotentials."""
 
     homepage = "https://salmon-tddft.jp"
-    url = "http://salmon-tddft.jp/download/SALMON-v.2.0.0.tar.gz"
+    url = "https://salmon-tddft.jp/download/SALMON-v.2.0.0.tar.gz"
 
     version('2.0.0', sha256='c3bb80bc5d338cba21cd8f345acbf2f2d81ef75af069a0a0ddbdc0acf358456c')
     version('1.2.1', sha256='a5045149e49abe9dd9edefe00cd1508a1323081bc3d034632176b728effdbaeb')
@@ -24,6 +24,7 @@ class SalmonTddft(CMakePackage):
     variant('mpi', default=False, description='Enable MPI')
     variant('libxc', default=False, description='Enable libxc')
     variant('scalapack', default=False, description='Enable scalapack')
+    variant('eigenexa', default=False, description='Enable eigenexa')
     variant(
         'manycore', default=False,
         description='Enable optimization of reduction for many-core processor'
@@ -36,11 +37,14 @@ class SalmonTddft(CMakePackage):
     depends_on('cmake@3.14:', type='build')
     depends_on('mpi', type='link', when='+mpi')
     depends_on('scalapack', type='link', when='+scalapack')
+    depends_on('eigenexa', type='link', when='+eigenexa')
     depends_on('lapack', type='link')
     depends_on('libxc', type='link', when='+libxc')
     depends_on('libxc@:4.9', type='link', when='@:1.9.9 +libxc')
 
     conflicts('+scalapack', when='~mpi')
+    conflicts('+eigenexa', when='@:1.9.9')
+    conflicts('+eigenexa', when='~scalapack')
     conflicts('+manycore', when='@2.0.0:')
     conflicts('+current_processing', when='@2.0.0:')
 
@@ -54,6 +58,7 @@ class SalmonTddft(CMakePackage):
         define = self.define
         args = [
             define_from_variant('USE_SCALAPACK', 'scalapack'),
+            define_from_variant('USE_EIGENEXA', 'eigenexa'),
             define_from_variant('USE_MPI', 'mpi'),
             define_from_variant('USE_LIBXC', 'libxc'),
             define_from_variant('REDUCE_FOR_MANYCORE', 'manycore'),

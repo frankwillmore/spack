@@ -1,20 +1,22 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
+import os
 import platform
 import sys
-import os
-from spack import *
+
 import llnl.util.tty as tty
+
+from spack import *
 
 
 class Namd(MakefilePackage, CudaPackage):
-    """NAMDis a parallel molecular dynamics code designed for
+    """NAMD is a parallel molecular dynamics code designed for
     high-performance simulation of large biomolecular systems."""
 
-    homepage = "http://www.ks.uiuc.edu/Research/namd/"
+    homepage = "https://www.ks.uiuc.edu/Research/namd/"
     url      = "file://{0}/NAMD_2.12_Source.tar.gz".format(os.getcwd())
     git      = "https://charm.cs.illinois.edu/gerrit/namd.git"
     manual_download = True
@@ -37,12 +39,14 @@ class Namd(MakefilePackage, CudaPackage):
     # allowed
     patch('inherited-member-2.13.patch', when='@2.13')
     patch('inherited-member-2.14.patch', when='@2.14')
+    # Handle change in python-config for python@3.8:
+    patch('namd-python38.patch', when='interface=python ^python@3.8:')
 
     depends_on('charmpp@6.10.1:', when="@2.14:")
     depends_on('charmpp@6.8.2', when="@2.13")
     depends_on('charmpp@6.7.1', when="@2.12")
 
-    depends_on('fftw@:2.99', when="fftw=2")
+    depends_on('fftw@:2', when="fftw=2")
     depends_on('fftw@3:', when="fftw=3")
 
     depends_on('amdfftw', when="fftw=amdfftw")
@@ -111,7 +115,7 @@ class Namd(MakefilePackage, CudaPackage):
                 else:
                     optims_opts = {
                         'gcc': m64 + '-O3 -fexpensive-optimizations \
-                                        -ffast-math ' + archopt,
+                                        -ffast-math -lpthread ' + archopt,
                         'intel': '-O2 -ip ' + archopt,
                         'aocc': m64 + '-O3 -ffp-contract=fast \
                                         -ffast-math ' + archopt}
@@ -226,7 +230,7 @@ class Namd(MakefilePackage, CudaPackage):
             self._append_option(opts, 'cuda')
             filter_file('^CUDADIR=.*$',
                         'CUDADIR={0}'.format(spec['cuda'].prefix),
-                        self.arch + '.cuda')
+                        join_path('arch', self.arch + '.cuda'))
 
         config = Executable('./config')
 

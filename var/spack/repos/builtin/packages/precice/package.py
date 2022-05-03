@@ -1,9 +1,10 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from spack import *
+from spack.pkg.builtin.boost import Boost
 
 
 class Precice(CMakePackage):
@@ -13,12 +14,17 @@ class Precice(CMakePackage):
     capable of simulating a subpart of the complete physics involved in
     a simulation."""
 
-    homepage = 'https://www.precice.org'
+    homepage = 'https://precice.org/'
     git      = 'https://github.com/precice/precice.git'
     url      = 'https://github.com/precice/precice/archive/v1.2.0.tar.gz'
     maintainers = ['fsimonis', 'MakisH']
 
+    tags = ['e4s']
+
     version('develop', branch='develop')
+    version('2.3.0', sha256='57bab08e8b986f5faa364689d470940dbd9c138e5cfa7b861793e7db56b89da3')
+    version('2.2.1', sha256='bca8cedfb5c86656e4fdfaca5cb982b861f9aba926538fa4411bc0d015e09c1f')
+    version('2.2.0', sha256='f8c4e0810dcaeb6a40a0fcab64b95c899f0121c968e0730416d4d2a97d39d0c4')
     version('2.1.1', sha256='729b7c24a7a61b3953bb70d96a954ad3a85729a29a35a288b59ba25661117064')
     version('2.1.0', sha256='1e6432724f70d0c6c05fdd645e0026754edbc547719a35bf1d3c12a779b1d00e')
     version('2.0.2', sha256='72864480f32696e7b6da94fd404ef5cd6586e2e1640613e46b75f1afac8569ed')
@@ -42,9 +48,19 @@ class Precice(CMakePackage):
 
     depends_on('cmake@3.5:', type='build')
     depends_on('cmake@3.10.2:', type='build', when='@1.4:')
+    depends_on('pkgconfig', type='build', when='@2.2:')
     depends_on('boost@1.60.0:')
     depends_on('boost@1.65.1:', when='@1.4:')
-    depends_on('boost@:1.72.99', when='@:2.0.2')
+    depends_on('boost@:1.72', when='@:2.0.2')
+    depends_on('boost@:1.74', when='@:2.1.1')
+
+    # See https://github.com/precice/precice/pull/1250
+    conflicts('boost@1.79.0')
+
+    # TODO: replace this with an explicit list of components of Boost,
+    # for instance depends_on('boost +filesystem')
+    # See https://github.com/spack/spack/pull/22303 for reference
+    depends_on(Boost.with_default_variants)
     depends_on('eigen@3.2:')
     depends_on('eigen@:3.3.7', type='build', when='@:1.5')  # bug in prettyprint
     depends_on('libxml2')
@@ -60,13 +76,12 @@ class Precice(CMakePackage):
     depends_on('py-numpy@:1.16', when='@:1.9+python', type=('build', 'run'))
     depends_on('py-numpy@1.17:', when='@2:+python', type=('build', 'run'))
 
-    # We require C++11 compiler support as well as
-    # library support for time manipulators (N2071, N2072)
+    # We require C++14 compiler support
     conflicts('%gcc@:4')
-    conflicts('%apple-clang@:4')
+    conflicts('%apple-clang@:5')
     conflicts('%clang@:3.7')
-    conflicts('%intel@:14')
-    conflicts('%pgi@:14')
+    conflicts('%intel@:16')
+    conflicts('%pgi@:17.3')
 
     def cmake_args(self):
         """Populate cmake arguments for precice."""
@@ -137,7 +152,7 @@ class Precice(CMakePackage):
             python_include = spec['python'].headers.directories[0]
             numpy_include = join_path(
                 spec['py-numpy'].prefix,
-                spec['python'].package.site_packages_dir,
+                spec['python'].package.platlib,
                 'numpy', 'core', 'include')
             if xsdk_mode:
                 cmake_args.append('-DTPL_ENABLE_PYTHON:BOOL=ON')

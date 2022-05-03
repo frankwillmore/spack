@@ -1,28 +1,27 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import spack
 import spack.store
+from spack import *
+from spack.pkg.builtin.boost import Boost
 
 
 class CbtfKrell(CMakePackage):
-    """CBTF Krell project contains the Krell Institute contributions to the
-       CBTF project.  These contributions include many performance data
-       collectors and support libraries as well as some example tools
+    """CBTF Krell project contains collector and runtime contributions
+       to the CBTF project.  These contributions include many performance
+       data collectors and support libraries as well as some example tools
        that drive the data collection at HPC levels of scale.
     """
-    homepage = "http://sourceforge.net/p/cbtf/wiki/Home/"
+    homepage = "https://sourceforge.net/p/cbtf/wiki/Home/"
     git      = "https://github.com/OpenSpeedShop/cbtf-krell.git"
 
     version('develop', branch='master')
+    version('1.9.4.1', branch='1.9.4.1')
+    version('1.9.4', branch='1.9.4')
     version('1.9.3', branch='1.9.3')
-    version('1.9.2', branch='1.9.2')
-    version('1.9.1.2', branch='1.9.1.2')
-    version('1.9.1.1', branch='1.9.1.1')
-    version('1.9.1.0', branch='1.9.1.0')
 
     # MPI variants
     variant('openmpi', default=False,
@@ -31,18 +30,13 @@ class CbtfKrell(CMakePackage):
             description="Build mpi experiment collector for SGI MPT MPI.")
     variant('mvapich2', default=False,
             description="Build mpi experiment collector for mvapich2 MPI.")
-    variant('mvapich', default=False,
-            description="Build mpi experiment collector for mvapich MPI.")
     variant('mpich2', default=False,
             description="Build mpi experiment collector for mpich2 MPI.")
-    variant('mpich', default=False,
-            description="Build mpi experiment collector for mpich MPI.")
     variant('runtime', default=False,
             description="build only the runtime libraries and collectors.")
-    variant('build_type', default='None', values=('None',),
-            description='CMake build type')
-    variant('cti', default=False,
-            description="Build MRNet with the CTI startup option")
+    variant('build_type', default='RelWithDebInfo',
+            description='The build type to build',
+            values=('Debug', 'Release', 'RelWithDebInfo'))
     variant('crayfe', default=False,
             description="build only the FE tool using the runtime_dir \
                          to point to target build.")
@@ -51,48 +45,46 @@ class CbtfKrell(CMakePackage):
     depends_on("cmake@3.0.2:", type='build')
 
     # For rpcgen
-    depends_on("rpcsvc-proto")
+    depends_on("rpcsvc-proto", type='build')
 
     # For rpc
     depends_on("libtirpc", type='link')
 
     # For binutils
-    depends_on("binutils")
+    depends_on("binutils+plugins~gold@2.32")
 
     # For boost
-    depends_on("boost@1.66.0:1.69.0")
+    depends_on("boost@1.70.0:")
+
+    # TODO: replace this with an explicit list of components of Boost,
+    # for instance depends_on('boost +filesystem')
+    # See https://github.com/spack/spack/pull/22303 for reference
+    depends_on(Boost.with_default_variants)
 
     # For Dyninst
-    depends_on("dyninst@develop", when='@develop')
-    depends_on("dyninst@10:", when='@1.9.1.0:9999')
+    depends_on("dyninst@10.1.0", when='@develop')
+    depends_on("dyninst@10.1.0", when='@1.9.3:9999')
 
     # For MRNet
-    depends_on("mrnet@5.0.1-3:+cti", when='@develop+cti', type=('build', 'link', 'run'))
     depends_on("mrnet@5.0.1-3:+lwthreads", when='@develop', type=('build', 'link', 'run'))
-
-    depends_on("mrnet@5.0.1-3+cti", when='@1.9.1.0:9999+cti', type=('build', 'link', 'run'))
-    depends_on("mrnet@5.0.1-3+lwthreads", when='@1.9.1.0:9999', type=('build', 'link', 'run'))
+    depends_on("mrnet@5.0.1-3+lwthreads", when='@1.9.3:9999', type=('build', 'link', 'run'))
 
     # For Xerces-C
     depends_on("xerces-c")
 
     # For CBTF
     depends_on("cbtf@develop", when='@develop', type=('build', 'link', 'run'))
-    depends_on("cbtf@1.9.1.0:9999", when='@1.9.1.0:9999', type=('build', 'link', 'run'))
-
-    # For CBTF with cti
-    depends_on("cbtf@develop+cti", when='@develop+cti', type=('build', 'link', 'run'))
-    depends_on("cbtf@1.9.1.0:9999+cti", when='@1.9.1.0:9999+cti', type=('build', 'link', 'run'))
+    depends_on("cbtf@1.9.3:9999", when='@1.9.3:9999', type=('build', 'link', 'run'))
 
     # For CBTF with runtime
     depends_on("cbtf@develop+runtime", when='@develop+runtime', type=('build', 'link', 'run'))
-    depends_on("cbtf@1.9.1.0:9999+runtime", when='@1.9.1.0:9999+runtime', type=('build', 'link', 'run'))
+    depends_on("cbtf@1.9.3:9999+runtime", when='@1.9.3:9999+runtime', type=('build', 'link', 'run'))
 
     # for services and collectors
-    depends_on("libmonitor@2013.02.18+krellpatch", type=('build', 'link', 'run'))
+    depends_on("libmonitor@2013.02.18+commrank", type=('build', 'link', 'run'))
 
     depends_on("libunwind", when='@develop')
-    depends_on("libunwind@1.2.1", when='@1.9.1.0:9999')
+    depends_on("libunwind@1.2.1", when='@1.9.3:9999')
 
     depends_on("papi@5.4.1:", type=('build', 'link', 'run'))
 
@@ -100,10 +92,8 @@ class CbtfKrell(CMakePackage):
 
     # MPI Installations
     depends_on("openmpi", when='+openmpi')
-    depends_on("mpich@:1", when='+mpich')
     depends_on("mpich@2:", when='+mpich2')
     depends_on("mvapich2@2:", when='+mvapich2')
-    depends_on("mvapich2@:1", when='+mvapich')
     depends_on("mpt", when='+mpt')
 
     depends_on("python", when='@develop', type=('build', 'run'))
@@ -134,15 +124,9 @@ class CbtfKrell(CMakePackage):
         # openmpi
         if spec.satisfies('+openmpi'):
             mpi_options.append('-DOPENMPI_DIR=%s' % spec['openmpi'].prefix)
-        # mpich
-        if spec.satisfies('+mpich'):
-            mpi_options.append('-DMPICH_DIR=%s' % spec['mpich'].prefix)
         # mpich2
         if spec.satisfies('+mpich2'):
             mpi_options.append('-DMPICH2_DIR=%s' % spec['mpich2'].prefix)
-        # mvapich
-        if spec.satisfies('+mvapich'):
-            mpi_options.append('-DMVAPICH_DIR=%s' % spec['mvapich'].prefix)
         # mvapich2
         if spec.satisfies('+mvapich2'):
             mpi_options.append('-DMVAPICH2_DIR=%s' % spec['mvapich2'].prefix)
@@ -203,7 +187,7 @@ class CbtfKrell(CMakePackage):
     def cmake_args(self):
         spec = self.spec
 
-        compile_flags = "-O2 -g"
+        compile_flags = "-O2 -g -Wall"
 
         # Add in paths for finding package config files that tell us
         # where to find these packages
@@ -215,7 +199,11 @@ class CbtfKrell(CMakePackage):
             '-DLIBMONITOR_DIR=%s' % spec['libmonitor'].prefix,
             '-DLIBUNWIND_DIR=%s' % spec['libunwind'].prefix,
             '-DPAPI_DIR=%s' % spec['papi'].prefix,
-            '-DBOOST_DIR=%s' % spec['boost'].prefix,
+            '-DBoost_NO_SYSTEM_PATHS=TRUE',
+            '-DBoost_NO_BOOST_CMAKE=TRUE',
+            '-DBOOST_ROOT=%s' % spec['boost'].prefix,
+            '-DBoost_DIR=%s' % spec['boost'].prefix,
+            '-DBOOST_LIBRARYDIR=%s' % spec['boost'].prefix.lib,
             '-DMRNET_DIR=%s' % spec['mrnet'].prefix,
             '-DDYNINST_DIR=%s' % spec['dyninst'].prefix,
             '-DLIBIOMP_DIR=%s' % spec['llvm-openmp-ompt'].prefix,
@@ -250,12 +238,6 @@ class CbtfKrell(CMakePackage):
         # mpi runtimes for cbtfsummary
         # Users may have to set the CBTF_MPI_IMPLEMENTATION variable
         # manually if multiple mpi's are specified in the build
-
-        if self.spec.satisfies('+mpich'):
-            env.set('CBTF_MPI_IMPLEMENTATION', "mpich")
-
-        if self.spec.satisfies('+mvapich'):
-            env.set('CBTF_MPI_IMPLEMENTATION', "mvapich")
 
         if self.spec.satisfies('+mvapich2'):
             env.set('CBTF_MPI_IMPLEMENTATION', "mvapich2")

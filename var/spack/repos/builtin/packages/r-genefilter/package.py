@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -7,12 +7,14 @@ from spack import *
 
 
 class RGenefilter(RPackage):
-    """genefilter: methods for filtering genes from high-throughput
-       experiments."""
+    """Methods for filtering genes from high-throughput experiments.
 
-    homepage = "https://bioconductor.org/packages/genefilter"
-    git      = "https://git.bioconductor.org/packages/genefilter.git"
+    Some basic functions for filtering genes."""
 
+    bioc = "genefilter"
+
+    version('1.76.0', commit='8d630fd25f0d2a4101e05e123c3959591203a7ea')
+    version('1.72.1', commit='b01b00a766982ef7d80b90a252085c8c4f085e1b')
     version('1.72.0', commit='8cb0b2e73531a417d53e5625bcf436265cdbe101')
     version('1.66.0', commit='1c4c471ccca873bf92dcf0b50f611eaa64c4f0cf')
     version('1.64.0', commit='82e91b7751bae997b9c898c219ea201fd02a8512')
@@ -21,8 +23,9 @@ class RGenefilter(RPackage):
     version('1.58.1', commit='ace2556049677f60882adfe91f8cc96791556fc2')
 
     depends_on('r-biocgenerics@0.31.2:', type=('build', 'run'), when='@1.68.0:')
-    depends_on('r-s4vectors@0.9.42:', type=('build', 'run'), when='@:1.66.0')
     depends_on('r-annotationdbi', type=('build', 'run'))
     depends_on('r-annotate', type=('build', 'run'))
     depends_on('r-biobase', type=('build', 'run'))
     depends_on('r-survival', type=('build', 'run'))
+
+    depends_on('r-s4vectors@0.9.42:', type=('build', 'run'), when='@:1.66.0')

@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -21,9 +21,10 @@ class RSseq(RPackage):
        calculated, and used to test the hypothesis that the expected expression
        of a gene in two conditions identically follow a NB distribution."""
 
-    homepage = "https://bioconductor.org/packages/sSeq"
-    git      = "https://git.bioconductor.org/packages/sSeq.git"
+    bioc = "sSeq"
 
+    version('1.32.0', commit='c0d3c305755d888f64d334a4ab5fa54c623054cf')
+    version('1.28.0', commit='401f6805628bdf6579cc0e643b7ed54319f024be')
     version('1.22.0', commit='fa3895c9578edddca17b5d13a2678ee5830b85cc')
     version('1.20.1', commit='91f31440323612cb04beb44404ab0a1bcb3ad87d')
     version('1.18.0', commit='1f65e5a55ce0d51672b785450031872e6db5ca0f')

@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -7,16 +7,20 @@ from spack import *
 
 
 class RLumi(RPackage):
-    """The lumi package provides an integrated solution for the Illumina
+    """BeadArray Specific Methods for Illumina Methylation and Expression
+    Microarrays.
+
+    The lumi package provides an integrated solution for the Illumina
     microarray data analysis. It includes functions of Illumina BeadStudio
     (GenomeStudio) data input, quality control, BeadArray-specific variance
     stabilization, normalization and gene annotation at the probe level. It
     also includes the functions of processing Illumina methylation microarrays,
     especially Illumina Infinium methylation microarrays."""
 
-    homepage = "https://bioconductor.org/packages/release/bioc/html/lumi.html"
-    git      = "https://git.bioconductor.org/packages/lumi"
+    bioc = "lumi"
 
+    version('2.46.0', commit='a68932c17a61c99e58ebbd8008d078bec6adb4e7')
+    version('2.42.0', commit='a643b3ba46fee951b8566ddd8216af7e6c92f6f6')
     version('2.38.0', commit='321d480d44ce9a0c02ce5af1bddc1f549abdea59')
 
     depends_on('r@2.10:', type=('build', 'run'))

@@ -1,12 +1,11 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
-
 """Infrastructure used by tests for mocking packages and repos."""
+import collections
 
-import ordereddict_backport
-
+import spack.provider_index
 import spack.util.naming
 from spack.dependency import Dependency
 from spack.spec import Spec
@@ -33,7 +32,6 @@ class MockPackageBase(object):
 
         """
         self.spec = None
-        self._installed_upstream = False
 
     def provides(self, vname):
         return vname in self.provided
@@ -80,6 +78,8 @@ class MockPackageMultiRepo(object):
 
     def __init__(self):
         self.spec_to_pkg = {}
+        self.namespace = 'mock'                 # repo namespace
+        self.full_namespace = 'spack.pkg.mock'  # python import namespace
 
     def get(self, spec):
         if not isinstance(spec, spack.spec.Spec):
@@ -89,6 +89,10 @@ class MockPackageMultiRepo(object):
         return self.spec_to_pkg[spec.name]
 
     def get_pkg_class(self, name):
+        namespace, _, name = name.rpartition(".")
+        if namespace and namespace != self.namespace:
+            raise spack.repo.InvalidNamespaceError(
+                "bad namespace: %s" % self.namespace)
         return self.spec_to_pkg[name]
 
     def exists(self, name):
@@ -98,7 +102,6 @@ class MockPackageMultiRepo(object):
         return False
 
     def repo_for_pkg(self, name):
-        import collections
         Repo = collections.namedtuple('Repo', ['namespace'])
         return Repo('mockrepo')
 
@@ -142,7 +145,7 @@ class MockPackageMultiRepo(object):
         MockPackage._repo = self
 
         # set up dependencies
-        MockPackage.dependencies = ordereddict_backport.OrderedDict()
+        MockPackage.dependencies = collections.OrderedDict()
         for dep, dtype in zip(dependencies, dependency_types):
             d = Dependency(MockPackage, Spec(dep.name), type=dtype)
             if not conditions or dep.name not in conditions:
@@ -171,3 +174,7 @@ class MockPackageMultiRepo(object):
         self.spec_to_pkg["mockrepo." + name] = mock_package
 
         return mock_package
+
+    @property
+    def provider_index(self):
+        return spack.provider_index.ProviderIndex()

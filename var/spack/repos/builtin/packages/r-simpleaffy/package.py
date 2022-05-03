@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -15,9 +15,9 @@ class RSimpleaffy(RPackage):
        basic scatter plot functions and mechanisms for generating high
        resolution journal figures..."""
 
-    homepage = "https://bioconductor.org/packages/simpleaffy"
-    git      = "https://git.bioconductor.org/packages/simpleaffy.git"
+    bioc = "simpleaffy"
 
+    version('2.66.0', commit='902db69e4ea4b6d306f0c744d3be600f1418ebc9')
     version('2.60.0', commit='b32b5e7d5c65e43c10f98ab8684a1086a06d04f9')
     version('2.58.0', commit='70cf1199bad620f60eaa288279632110bb571200')
     version('2.56.0', commit='a05d768180b8713ad9e1dc46d491b7ef389b299d')

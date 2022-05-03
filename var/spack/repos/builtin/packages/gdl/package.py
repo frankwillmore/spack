@@ -1,8 +1,9 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 import os
+
 from spack import *
 
 
@@ -60,6 +61,8 @@ class Gdl(CMakePackage):
     depends_on('netcdf-c')
     depends_on('pslib')
     depends_on('readline')
+    depends_on('libtirpc', type='link')
+    depends_on('libgeotiff', type='link')
 
     conflicts('+python', when='~embed_python')
 
@@ -141,7 +144,7 @@ class Gdl(CMakePackage):
             src = os.path.join(
                 self.spec.prefix.lib,
                 'site-python')
-            dst = site_packages_dir
+            dst = python_platlib
             if os.path.isdir(src):
                 if not os.path.isdir(dst):
                     mkdirp(dst)

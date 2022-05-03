@@ -1,35 +1,28 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 import os
 import shutil
+import sys
+
 import pytest
 
 from llnl.util.filesystem import mkdirp
+
 import spack.environment as ev
-from spack.main import SpackCommand, SpackCommandError
 import spack.paths
 import spack.stage
-
+from spack.main import SpackCommand, SpackCommandError
 
 # Everything here uses (or can use) the mock config and database.
-pytestmark = pytest.mark.usefixtures('config', 'database')
-
+pytestmark = [pytest.mark.usefixtures('config', 'database'),
+              pytest.mark.skipif(sys.platform == "win32",
+                                 reason="does not run on windows")]
 # location prints out "locations of packages and spack directories"
 location = SpackCommand('location')
-
-
-@pytest.fixture
-def mock_test_env():
-    test_env_name = 'test'
-    env_dir = ev.root(test_env_name)
-    mkdirp(env_dir)
-    yield test_env_name, env_dir
-
-    # Remove the temporary test environment directory created above
-    shutil.rmtree(env_dir)
+env = SpackCommand('env')
 
 
 @pytest.fixture
@@ -52,18 +45,26 @@ def test_location_build_dir(mock_spec):
     assert location('--build-dir', spec.name).strip() == pkg.stage.source_path
 
 
-def test_location_build_dir_missing():
-    """Tests spack location --build-dir with a missing build directory."""
+@pytest.mark.regression('22738')
+def test_location_source_dir(mock_spec):
+    """Tests spack location --source-dir."""
+    spec, pkg = mock_spec
+    assert location('--source-dir', spec.name).strip() == pkg.stage.source_path
+    assert location(spec.name).strip() == pkg.stage.source_path
+
+
+def test_location_source_dir_missing():
+    """Tests spack location --source-dir with a missing source directory."""
     spec = 'mpileaks'
     prefix = "==> Error: "
-    expected = "%sBuild directory does not exist yet. Run this to create it:"\
+    expected = "%sSource directory does not exist yet. Run this to create it:"\
                "%s  spack stage %s" % (prefix, os.linesep, spec)
-    out = location('--build-dir', spec, fail_on_error=False).strip()
+    out = location('--source-dir', spec, fail_on_error=False).strip()
     assert out == expected
 
 
 @pytest.mark.parametrize('options', [([]),
-                                     (['--build-dir', 'mpileaks']),
+                                     (['--source-dir', 'mpileaks']),
                                      (['--env', 'missing-env']),
                                      (['spec1', 'spec2'])])
 def test_location_cmd_error(options):
@@ -72,10 +73,40 @@ def test_location_cmd_error(options):
         location(*options)
 
 
-def test_location_env(mock_test_env):
-    """Tests spack location --env."""
-    test_env_name, env_dir = mock_test_env
-    assert location('--env', test_env_name).strip() == env_dir
+def test_location_env_exists(mutable_mock_env_path):
+    """Tests spack location --env <name> for an existing environment."""
+    e = ev.create("example")
+    e.write()
+    assert location('--env', "example").strip() == e.path
+
+
+def test_location_with_active_env(mutable_mock_env_path):
+    """Tests spack location --env with active env"""
+    e = ev.create("example")
+    e.write()
+    with e:
+        assert location('--env').strip() == e.path
+
+
+def test_location_env_flag_interference(mutable_mock_env_path, tmpdir):
+    """
+    Tests that specifying an active environment using `spack -e x location ...`
+    does not interfere with the location command flags.
+    """
+
+    # create two environments
+    env('create', 'first_env')
+    env('create', 'second_env')
+
+    global_args = ['-e', 'first_env']
+
+    # `spack -e first_env location -e second_env` should print the env
+    # path of second_env
+    assert 'first_env' not in location('-e', 'second_env', global_args=global_args)
+
+    # `spack -e first_env location --packages` should not print
+    # the environment path of first_env.
+    assert 'first_env' not in location('--packages', global_args=global_args)
 
 
 def test_location_env_missing():

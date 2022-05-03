@@ -1,24 +1,24 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from __future__ import print_function
 
-import sys
 import itertools
-
-import spack.cmd
-import spack.environment as ev
-import spack.error
-import spack.package
-import spack.cmd.common.arguments as arguments
-import spack.repo
-import spack.store
-from spack.database import InstallStatuses
+import sys
 
 from llnl.util import tty
 from llnl.util.tty.colify import colify
+
+import spack.cmd
+import spack.cmd.common.arguments as arguments
+import spack.environment as ev
+import spack.error
+import spack.package
+import spack.repo
+import spack.store
+from spack.database import InstallStatuses
 
 description = "remove installed packages"
 section = "build"
@@ -62,19 +62,25 @@ def setup_parser(subparser):
         '-a', '--all', action='store_true', dest='all',
         help="remove ALL installed packages that match each supplied spec"
     )
+    subparser.add_argument(
+        '--origin', dest='origin',
+        help="only remove DB records with the specified origin"
+    )
 
 
-def find_matching_specs(env, specs, allow_multiple_matches=False, force=False):
+def find_matching_specs(env, specs, allow_multiple_matches=False, force=False,
+                        origin=None):
     """Returns a list of specs matching the not necessarily
        concretized specs given from cli
 
     Args:
-        env (Environment): active environment, or ``None`` if there is not one
+        env (spack.environment.Environment): active environment, or ``None``
+            if there is not one
         specs (list): list of specs to be matched against installed packages
         allow_multiple_matches (bool): if True multiple matches are admitted
 
     Return:
-        list of specs
+        list: list of specs
     """
     # constrain uninstall resolution to current environment if one is active
     hashes = env.all_hashes() if env else None
@@ -84,8 +90,8 @@ def find_matching_specs(env, specs, allow_multiple_matches=False, force=False):
     has_errors = False
     for spec in specs:
         install_query = [InstallStatuses.INSTALLED, InstallStatuses.DEPRECATED]
-        matching = spack.store.db.query_local(spec, hashes=hashes,
-                                              installed=install_query)
+        matching = spack.store.db.query_local(
+            spec, hashes=hashes, installed=install_query, origin=origin)
         # For each spec provided, make sure it refers to only one package.
         # Fail and ask user to be unambiguous if it doesn't
         if not allow_multiple_matches and len(matching) > 1:
@@ -118,15 +124,13 @@ def installed_dependents(specs, env):
 
     Args:
         specs (list): list of Specs
-        env (Environment): the active environment, or None
+        env (spack.environment.Environment or None): the active environment, or None
 
     Returns:
-        (tuple of dicts): two mappings: one from specs to their dependent
-            environments in the active environment (or global scope if
-            there is no environment), and one from specs to their
-            dependents in *inactive* environments (empty if there is no
-            environment
-
+        tuple: two mappings: one from specs to their dependent environments in the
+        active environment (or global scope if there is no environment), and one from
+        specs to their dependents in *inactive* environments (empty if there is no
+        environment
     """
     active_dpts = {}
     inactive_dpts = {}
@@ -155,9 +159,9 @@ def dependent_environments(specs):
 
     Args:
         specs (list): list of Specs
-    Returns:
-        (dict): mapping from spec to lists of dependent Environments
 
+    Returns:
+        dict: mapping from spec to lists of dependent Environments
     """
     dependents = {}
     for env in ev.all_environments():
@@ -176,9 +180,10 @@ def inactive_dependent_environments(spec_envs):
     have no dependent environments.  Return the result.
 
     Args:
-        (dict): mapping from spec to lists of dependent Environments
+        spec_envs (dict): mapping from spec to lists of dependent Environments
+
     Returns:
-        (dict): mapping from spec to lists of *inactive* dependent Environments
+        dict: mapping from spec to lists of *inactive* dependent Environments
     """
     spec_inactive_envs = {}
     for spec, de_list in spec_envs.items():
@@ -203,7 +208,8 @@ def do_uninstall(env, specs, force):
     """Uninstalls all the specs in a list.
 
     Args:
-        env (Environment): active environment, or ``None`` if there is not one
+        env (spack.environment.Environment or None): active environment, or ``None``
+            if there is not one
         specs (list): list of specs to be uninstalled
         force (bool): force uninstallation (boolean)
     """
@@ -239,7 +245,8 @@ def do_uninstall(env, specs, force):
 def get_uninstall_list(args, specs, env):
     # Gets the list of installed specs that match the ones give via cli
     # args.all takes care of the case where '-a' is given in the cli
-    uninstall_list = find_matching_specs(env, specs, args.all, args.force)
+    uninstall_list = find_matching_specs(env, specs, args.all, args.force,
+                                         args.origin)
 
     # Takes care of '-R'
     active_dpts, inactive_dpts = installed_dependents(uninstall_list, env)
@@ -310,7 +317,7 @@ def get_uninstall_list(args, specs, env):
 
 
 def uninstall_specs(args, specs):
-    env = ev.get_env(args, 'uninstall')
+    env = ev.active_environment()
 
     uninstall_list, remove_list = get_uninstall_list(args, specs, env)
     anything_to_do = set(uninstall_list).union(set(remove_list))

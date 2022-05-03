@@ -1,17 +1,20 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import os
+
+from llnl.util.filesystem import join_path
+
+from spack import *
 
 
 class Lua(Package):
     """The Lua programming language interpreter and library."""
 
-    homepage = "http://www.lua.org"
-    url = "http://www.lua.org/ftp/lua-5.3.4.tar.gz"
+    homepage = "https://www.lua.org"
+    url = "https://www.lua.org/ftp/lua-5.3.4.tar.gz"
 
     version('5.3.5', sha256='0c2eed3f960446e1a3e4b9a1ca2f3ff893b6ce41942cf54d5dd59ab4b3b058ac')
     version('5.3.4', sha256='f681aa518233bc407e23acf0f5887c884f17436f000d453b2491a9f11a52400c')
@@ -27,15 +30,30 @@ class Lua(Package):
     version('5.1.4', sha256='b038e225eaf2a5b57c9bcc35cd13aa8c6c8288ef493d52970c9545074098af3a')
     version('5.1.3', sha256='6b5df2edaa5e02bf1a2d85e1442b2e329493b30b0c0780f77199d24f087d296d')
 
+    variant("pcfile", default=False, description="Add patch for lua.pc generation")
     variant('shared', default=True,
             description='Builds a shared version of the library')
+    variant('fetcher', default='curl', values=('curl', 'wget'), description='Fetcher to use in the LuaRocks package manager')
 
     extendable = True
+
+    provides('lua-lang')
 
     depends_on('ncurses+termlib')
     depends_on('readline')
     # luarocks needs unzip for some packages (e.g. lua-luaposix)
     depends_on('unzip', type='run')
+
+    # luarocks needs a fetcher (curl/wget), unfortunately I have not found
+    # how to force a choice for curl or wget, but curl seems the default.
+    depends_on('curl', when='fetcher=curl', type='run')
+    depends_on('wget', when='fetcher=wget', type='run')
+
+    patch(
+        "http://lua.2524044.n2.nabble.com/attachment/7666421/0/pkg-config.patch",
+        sha256="208316c2564bdd5343fa522f3b230d84bd164058957059838df7df56876cb4ae",
+        when="+pcfile"
+    )
 
     resource(
         name="luarocks",
@@ -51,10 +69,10 @@ class Lua(Package):
         else:
             target = 'linux'
         make('INSTALL_TOP=%s' % prefix,
-             'MYLDFLAGS=-L%s -L%s' % (
-                 spec['readline'].prefix.lib,
-                 spec['ncurses'].prefix.lib),
-             'MYLIBS=-lncursesw -ltinfow',
+             'MYLDFLAGS=' + ' '.join((
+                 spec['readline'].libs.search_flags,
+                 spec['ncurses'].libs.search_flags)),
+             'MYLIBS=%s' % spec['ncurses'].libs.link_flags,
              'CC=%s -std=gnu99 %s' % (spack_cc,
                                       self.compiler.cc_pic_flag),
              target)
@@ -165,6 +183,12 @@ class Lua(Package):
                 'LUA_CPATH',
                 os.path.join(self.spec.prefix, self.lua_lib_dir, '?.so'),
                 separator=';')
+
+    @run_after('install')
+    def link_pkg_config(self):
+        if "+pcfile" in self.spec:
+            symlink(join_path(self.prefix.lib, 'pkgconfig', 'lua5.3.pc'),
+                    join_path(self.prefix.lib, 'pkgconfig', 'lua.pc'))
 
     @property
     def lua_lib_dir(self):

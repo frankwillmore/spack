@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -9,9 +9,12 @@ class Eigen(CMakePackage):
     vectors, numerical solvers, and related algorithms.
     """
 
-    homepage = 'http://eigen.tuxfamily.org/'
-    url = 'https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.gz'
+    homepage = 'https://eigen.tuxfamily.org/'
+    url = 'https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz'
+    maintainers = ['HaoZeke']
 
+    version('3.4.0', sha256='8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72')
+    version('3.3.9', sha256='7985975b787340124786f092b3a07d594b2e9cd53bbfe5f3d9b1daee7d55f56f')
     version('3.3.8', sha256='146a480b8ed1fb6ac7cd33fec9eb5e8f8f62c3683b3f850094d9d5c35a92419a')
     version('3.3.7', sha256='d56fbad95abf993f8af608484729e3d87ef611dd85b3380a8bad1d5cbc373a57')
     version('3.3.6', sha256='e7cd8c94d6516d1ada9893ccc7c9a400fcee99927c902f15adba940787104dba')
@@ -28,9 +31,17 @@ class Eigen(CMakePackage):
     version('3.2.6', sha256='e097b8dcc5ad30d40af4ad72d7052e3f78639469baf83cffaadc045459cda21f')
     version('3.2.5', sha256='8068bd528a2ff3885eb55225c27237cf5cda834355599f05c2c85345db8338b4')
 
+    # there is a bug that provokes bad parsing of nvhpc version
+    patch('https://gitlab.com/libeigen/eigen/-/commit/001a57519a7aa909d3bf0cd8c6ec8a9cd19d9c70.diff', when='@3.2.6:3.3.9',
+          sha256='55daee880b7669807efc0dcbeda2ae3b659e6dd4df3932f3573c8778bf5f8a42')
+
     # there is a bug in 3.3.8 that provokes a compile error in dependent packages, see https://gitlab.com/libeigen/eigen/-/issues/2011
     patch('https://gitlab.com/libeigen/eigen/-/commit/6d822a1052fc665f06dc51b4729f6a38e0da0546.diff', when='@3.3.8',
           sha256='62590e9b33a8f72b608a72b87147a306e7cb20766ea53c6b8e0a183fa6cb7635')
+
+    # there is a bug in 3.3.4 that provokes a compile error with the xl compiler
+    # See https://gitlab.com/libeigen/eigen/-/issues/1555
+    patch('xlc-compilation-3.3.4.patch', when='@3.3.4%xl_r')
 
     # From http://eigen.tuxfamily.org/index.php?title=Main_Page#Requirements
     # "Eigen doesn't have any dependencies other than the C++ standard

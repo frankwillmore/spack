@@ -1,7 +1,9 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
+
+from spack.pkg.builtin.boost import Boost
 
 
 class Kicad(CMakePackage):
@@ -13,6 +15,7 @@ class Kicad(CMakePackage):
     url = 'https://gitlab.com/kicad/code/kicad/-/archive/5.1.8/kicad-5.1.8.tar.gz'
     maintainers = ['aweits']
 
+    version('5.1.9', sha256='841be864b9dc5c761193c3ee9cbdbed6729952d7b38451aa8e1977bdfdb6081b')
     version('5.1.8', sha256='bf24f8ef427b4a989479b8e4af0b8ae5c54766755f12748e2e88a922c5344ca4')
 
     depends_on('wxwidgets')
@@ -23,6 +26,11 @@ class Kicad(CMakePackage):
     depends_on('gl')
     depends_on('glm')
     depends_on('boost@1.56:')
+
+    # TODO: replace this with an explicit list of components of Boost,
+    # for instance depends_on('boost +filesystem')
+    # See https://github.com/spack/spack/pull/22303 for reference
+    depends_on(Boost.with_default_variants)
     depends_on('oce+X11')
     depends_on('swig', type='build')
     depends_on('curl')
@@ -41,6 +49,10 @@ class Kicad(CMakePackage):
         ('5.1.8', 'packages3D', '81e64939e922742431284bb19d1ec274d6dc10fd238e5583ead21dc08876c221'),
         ('5.1.8', 'symbols', '98cedcca4d7ad6e3be96ec5a41f8f9b3414eae276bac1efdfd3f8871f0f8bc7e'),
         ('5.1.8', 'templates', 'd64ca82854e9780413447a3fa82a528b264d39f57d467fddfc78f919e7ed15c5'),
+        ('5.1.9', 'footprints', 'a86fbe00fccd6da2d29687ec0c56a9c3cb6b9748ee8fd35c1625839168f28edc'),
+        ('5.1.9', 'packages3D', '35a4888dabd2dedb0d49c3e84b0eebc97b306200510e818dad90d4bb1c9e3296'),
+        ('5.1.9', 'symbols', '6741a7b01f14f1f5aae3155a554816516cf02ce7790074ba8462dee8091f8c2f'),
+        ('5.1.9', 'templates', 'bacf93567f8efe87314762448bb69698c8ed387058c13868c051c91740014aac'),
     ]
 
     for ver, lib, checksum in resource_list:
@@ -72,7 +84,8 @@ class Kicad(CMakePackage):
     @run_after('install')
     def install_libraries(self):
         for ver, lib, checksum in self.resource_list:
-            with working_dir('kicad-{0}-{1}'.format(lib, ver)):
-                args = std_cmake_args
-                cmake(*args)
-                make('install')
+            if self.spec.version == Version(ver):
+                with working_dir('kicad-{0}-{1}'.format(lib, ver)):
+                    args = std_cmake_args
+                    cmake(*args)
+                    make('install')

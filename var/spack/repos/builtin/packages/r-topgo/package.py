@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -14,9 +14,10 @@ class RTopgo(RPackage):
        methods for eliminating local similarities and dependencies between GO
        terms can be implemented and applied."""
 
-    homepage = "https://bioconductor.org/packages/topGO"
-    git      = "https://git.bioconductor.org/packages/topGO.git"
+    bioc = "topGO"
 
+    version('2.46.0', commit='2bfa9dff41fff261aa6188f8368aebd6e8250b18')
+    version('2.42.0', commit='3a33cf53883de45bda506953303e1809ab982adc')
     version('2.36.0', commit='c2f6c187b41c4aa44cc92ac781fdd878491a4019')
     version('2.34.0', commit='44cb5eaba515b365b7b2a8c22df0a45883db6b4d')
     version('2.32.0', commit='78ce3068fc06ae38d55219759fa177e2fcb3f596')

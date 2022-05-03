@@ -1,19 +1,26 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
+import collections
 import os
+import posixpath
+import sys
 
-import ordereddict_backport
 import pytest
+
+import llnl.util.tty as tty
+
+import spack.config
 import spack.paths
+import spack.util.s3
 import spack.util.web
 from spack.version import ver
 
 
 def _create_url(relative_url):
-    web_data_path = os.path.join(spack.paths.test_path, 'data', 'web')
-    return 'file://' + os.path.join(web_data_path, relative_url)
+    web_data_path = posixpath.join(spack.paths.test_path, 'data', 'web')
+    return 'file://' + posixpath.join(web_data_path, relative_url)
 
 
 root = _create_url('index.html')
@@ -24,6 +31,8 @@ page_3 = _create_url('3.html')
 page_4 = _create_url('4.html')
 
 
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
 @pytest.mark.parametrize(
     'depth,expected_found,expected_not_found,expected_text', [
         (0,
@@ -82,12 +91,16 @@ def test_spider_no_response(monkeypatch):
     assert not pages and not links
 
 
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
 def test_find_versions_of_archive_0():
     versions = spack.util.web.find_versions_of_archive(
         root_tarball, root, list_depth=0)
     assert ver('0.0.0') in versions
 
 
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
 def test_find_versions_of_archive_1():
     versions = spack.util.web.find_versions_of_archive(
         root_tarball, root, list_depth=1)
@@ -95,6 +108,8 @@ def test_find_versions_of_archive_1():
     assert ver('1.0.0') in versions
 
 
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
 def test_find_versions_of_archive_2():
     versions = spack.util.web.find_versions_of_archive(
         root_tarball, root, list_depth=2)
@@ -103,6 +118,8 @@ def test_find_versions_of_archive_2():
     assert ver('2.0.0') in versions
 
 
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
 def test_find_exotic_versions_of_archive_2():
     versions = spack.util.web.find_versions_of_archive(
         root_tarball, root, list_depth=2)
@@ -110,6 +127,8 @@ def test_find_exotic_versions_of_archive_2():
     assert ver('2.0.0b2') in versions
 
 
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
 def test_find_versions_of_archive_3():
     versions = spack.util.web.find_versions_of_archive(
         root_tarball, root, list_depth=3)
@@ -120,6 +139,8 @@ def test_find_versions_of_archive_3():
     assert ver('4.5') in versions
 
 
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
 def test_find_exotic_versions_of_archive_3():
     versions = spack.util.web.find_versions_of_archive(
         root_tarball, root, list_depth=3)
@@ -147,7 +168,7 @@ def test_get_header():
     # If lookup has to fallback to fuzzy matching and there are more than one
     # fuzzy match, the result depends on the internal ordering of the given
     # mapping
-    headers = ordereddict_backport.OrderedDict()
+    headers = collections.OrderedDict()
     headers['Content-type'] = 'text/plain'
     headers['contentType'] = 'text/html'
 
@@ -156,7 +177,7 @@ def test_get_header():
     assert(spack.util.web.get_header(headers, 'CONTENT_TYPE') == 'text/html')
 
     # Same as above, but different ordering
-    headers = ordereddict_backport.OrderedDict()
+    headers = collections.OrderedDict()
     headers['contentType'] = 'text/html'
     headers['Content-type'] = 'text/plain'
 
@@ -169,6 +190,8 @@ def test_get_header():
         spack.util.web.get_header(headers, 'ContentLength')
 
 
+@pytest.mark.skipif(sys.platform == 'win32',
+                    reason="Not supported on Windows (yet)")
 def test_list_url(tmpdir):
     testpath = str(tmpdir)
 
@@ -195,3 +218,110 @@ def test_list_url(tmpdir):
                               'file-0.txt',
                               'file-1.txt',
                               'file-2.txt']
+
+
+class MockPages(object):
+    def search(self, *args, **kwargs):
+        return [
+            {'Key': 'keyone'},
+            {'Key': 'keytwo'},
+            {'Key': 'keythree'},
+        ]
+
+
+class MockPaginator(object):
+    def paginate(self, *args, **kwargs):
+        return MockPages()
+
+
+class MockClientError(Exception):
+    def __init__(self):
+        self.response = {'Error': {'Code': 'NoSuchKey'}}
+
+
+class MockS3Client(object):
+    def get_paginator(self, *args, **kwargs):
+        return MockPaginator()
+
+    def delete_objects(self, *args, **kwargs):
+        return {
+            'Errors': [
+                {'Key': 'keyone', 'Message': 'Access Denied'}
+            ],
+            'Deleted': [
+                {'Key': 'keytwo'},
+                {'Key': 'keythree'}
+            ],
+        }
+
+    def delete_object(self, *args, **kwargs):
+        pass
+
+    def get_object(self, Bucket=None, Key=None):
+        self.ClientError = MockClientError
+        if Bucket == 'my-bucket' and Key == 'subdirectory/my-file':
+            return True
+        raise self.ClientError
+
+
+def test_gather_s3_information(monkeypatch, capfd):
+    mock_connection_data = {"access_token": "AAAAAAA",
+                            "profile": "SPacKDeV",
+                            "access_pair": ("SPA", "CK"),
+                            "endpoint_url": "https://127.0.0.1:8888"}
+
+    session_args, client_args = spack.util.s3.get_mirror_s3_connection_info(mock_connection_data)  # noqa: E501
+
+    # Session args are used to create the S3 Session object
+    assert "aws_session_token" in session_args
+    assert session_args.get("aws_session_token") == "AAAAAAA"
+    assert "aws_access_key_id" in session_args
+    assert session_args.get("aws_access_key_id") == "SPA"
+    assert "aws_secret_access_key" in session_args
+    assert session_args.get("aws_secret_access_key") == "CK"
+    assert "profile_name" in session_args
+    assert session_args.get("profile_name") == "SPacKDeV"
+
+    # In addition to the session object, use the client_args to create the s3
+    # Client object
+    assert "endpoint_url" in client_args
+
+
+def test_remove_s3_url(monkeypatch, capfd):
+    fake_s3_url = 's3://my-bucket/subdirectory/mirror'
+
+    def mock_create_s3_session(url, connection={}):
+        return MockS3Client()
+
+    monkeypatch.setattr(
+        spack.util.s3, 'create_s3_session', mock_create_s3_session)
+
+    current_debug_level = tty.debug_level()
+    tty.set_debug(1)
+
+    spack.util.web.remove_url(fake_s3_url, recursive=True)
+    err = capfd.readouterr()[1]
+
+    tty.set_debug(current_debug_level)
+
+    assert('Failed to delete keyone (Access Denied)' in err)
+    assert('Deleted keythree' in err)
+    assert('Deleted keytwo' in err)
+
+
+def test_s3_url_exists(monkeypatch, capfd):
+    def mock_create_s3_session(url, connection={}):
+        return MockS3Client()
+    monkeypatch.setattr(
+        spack.util.s3, 'create_s3_session', mock_create_s3_session)
+
+    fake_s3_url_exists = 's3://my-bucket/subdirectory/my-file'
+    assert(spack.util.web.url_exists(fake_s3_url_exists))
+
+    fake_s3_url_does_not_exist = 's3://my-bucket/subdirectory/my-notfound-file'
+    assert(not spack.util.web.url_exists(fake_s3_url_does_not_exist))
+
+
+def test_s3_url_parsing():
+    assert(spack.util.s3._parse_s3_endpoint_url("example.com") == 'https://example.com')
+    assert(spack.util.s3._parse_s3_endpoint_url("http://example.com") == 'http://example.com')

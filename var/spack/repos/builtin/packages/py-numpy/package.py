@@ -1,11 +1,12 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import platform
 import subprocess
+
+from spack import *
 
 
 class PyNumpy(PythonPackage):
@@ -19,9 +20,24 @@ class PyNumpy(PythonPackage):
     pypi = "numpy/numpy-1.19.4.zip"
     git      = "https://github.com/numpy/numpy.git"
 
-    maintainers = ['adamjstewart']
+    maintainers = ['adamjstewart', 'rgommers']
 
-    version('master', branch='master')
+    version('main', branch='main')
+    version('1.22.3', sha256='dbc7601a3b7472d559dc7b933b18b4b66f9aa7452c120e87dfb33d02008c8a18')
+    version('1.22.2', sha256='076aee5a3763d41da6bef9565fdf3cb987606f567cd8b104aded2b38b7b47abf')
+    version('1.22.1', sha256='e348ccf5bc5235fc405ab19d53bec215bb373300e5523c7b476cc0da8a5e9973')
+    version('1.22.0', sha256='a955e4128ac36797aaffd49ab44ec74a71c11d6938df83b1285492d277db5397')
+    version('1.21.6', sha256='ecb55251139706669fdec2ff073c98ef8e9a84473e51e716211b41aa0f18e656')
+    version('1.21.5', sha256='6a5928bc6241264dce5ed509e66f33676fc97f464e7a919edc672fb5532221ee')
+    version('1.21.4', sha256='e6c76a87633aa3fa16614b61ccedfae45b91df2767cf097aa9c933932a7ed1e0')
+    version('1.21.3', sha256='63571bb7897a584ca3249c86dd01c10bcb5fe4296e3568b2e9c1a55356b6410e')
+    version('1.21.2', sha256='423216d8afc5923b15df86037c6053bf030d15cc9e3224206ef868c2d63dd6dc')
+    version('1.21.1', sha256='dff4af63638afcc57a3dfb9e4b26d434a7a602d225b42d746ea7fe2edf1342fd')
+    version('1.21.0', sha256='e80fe25cba41c124d04c662f33f6364909b985f2eb5998aaa5ae4b9587242cce')
+    version('1.20.3', sha256='e55185e51b18d788e49fe8305fd73ef4470596b33fc2c1ceb304566b99c71a69')
+    version('1.20.2', sha256='878922bf5ad7550aa044aa9301d417e2d3ae50f0f577de92051d739ac6096cee')
+    version('1.20.1', sha256='3bc63486a870294683980d76ec1e3efc786295ae00128f9ea38e2c6e74d5a60a')
+    version('1.20.0', sha256='3d8233c03f116d068d5365fed4477f2947c7229582dad81e5953088989294cec')
     version('1.19.5', sha256='a76f502430dd98d7546e1ea2250a7360c065a5fdea52b2dffe8ae7180909b6f4')
     version('1.19.4', sha256='141ec3a3300ab89c7f2b0775289954d193cc8edb621ea05f99db9cb181530512')
     version('1.19.3', sha256='35bf5316af8dc7c7db1ad45bec603e5fb28671beb98ebd1d65e8059efcfd3b72')
@@ -77,15 +93,20 @@ class PyNumpy(PythonPackage):
     variant('blas',   default=True, description='Build with BLAS support')
     variant('lapack', default=True, description='Build with LAPACK support')
 
-    depends_on('python@2.7:2.8,3.4:', type=('build', 'run'))
-    depends_on('python@2.7:2.8,3.5:', type=('build', 'run'), when='@1.16:')
-    depends_on('python@3.5:', type=('build', 'run'), when='@1.17:')
-    depends_on('python@3.6:', type=('build', 'run'), when='@1.19:')
+    depends_on('python@2.7:2.8,3.4:3.6', type=('build', 'link', 'run'), when='@:1.13')
+    depends_on('python@2.7:2.8,3.4:3.8', type=('build', 'link', 'run'), when='@1.14:1.15')
+    depends_on('python@2.7:2.8,3.5:3.9', type=('build', 'link', 'run'), when='@1.16')
+    depends_on('python@3.5:3.9', type=('build', 'link', 'run'), when='@1.17:1.18')
+    depends_on('python@3.6:3.10', type=('build', 'link', 'run'), when='@1.19')
+    depends_on('python@3.7:3.10', type=('build', 'link', 'run'), when='@1.20:1.21')
+    depends_on('python@3.8:', type=('build', 'link', 'run'), when='@1.22:')
     depends_on('py-setuptools', type=('build', 'run'))
+    depends_on('py-setuptools@:59', when='@:1.22.1', type=('build', 'run'))
     # Check pyproject.toml for updates to the required cython version
-    depends_on('py-cython@0.29.13:', when='@1.18.0:', type='build')
-    depends_on('py-cython@0.29.14:', when='@1.18.1:', type='build')
-    depends_on('py-cython@0.29.21:', when='@1.19.1:', type='build')
+    depends_on('py-cython@0.29.13:2', when='@1.18.0:', type='build')
+    depends_on('py-cython@0.29.14:2', when='@1.18.1:', type='build')
+    depends_on('py-cython@0.29.21:2', when='@1.19.1:', type='build')
+    depends_on('py-cython@0.29.24:2', when='@1.21.2:', type='build')
     depends_on('blas',   when='+blas')
     depends_on('lapack', when='+lapack')
 
@@ -98,13 +119,31 @@ class PyNumpy(PythonPackage):
     patch('blas-lapack-order.patch', when='@1.15:1.16')
 
     # Add Fujitsu Fortran compiler
-    patch('add_fj_compiler.patch', when='@1.19.3:%fj')
+    patch('add_fj_compiler.patch', when='@1.19.3:1.19.5%fj')
     patch('add_fj_compiler2.patch', when='@1.19.0:1.19.2%fj')
     patch('add_fj_compiler3.patch', when='@1.14.0:1.18.5%fj')
     patch('add_fj_compiler4.patch', when='@:1.13.3%fj')
 
+    patch('check_executables.patch', when='@1.20.0:')
+    patch('check_executables2.patch', when='@1.19.0:1.19.5')
+    patch('check_executables3.patch', when='@1.16.0:1.18.5')
+    patch('check_executables4.patch', when='@1.14.0:1.15.4')
+    patch('check_executables5.patch', when='@:1.13.3')
+
+    # Backport bug fix for f2py's define for threading when building with Mingw
+    patch('https://github.com/numpy/numpy/pull/20881.patch?full_index=1',
+          sha256='802970a9034d40a8a8f49a03f489d5361d5eabf69249621e6757651448910f1a',
+          when='@1.20.3:1.22.1')
+
+    # version 1.21.0 runs into an infinit loop during printing
+    # (e.g. print(numpy.ones(1000)) when compiled with gcc 11
+    conflicts('%gcc@11:', when='@1.21.0')
+
     # GCC 4.8 is the minimum version that works
     conflicts('%gcc@:4.7', msg='GCC 4.8+ required')
+
+    # NVHPC support added in https://github.com/numpy/numpy/pull/17344
+    conflicts('%nvhpc', when='@:1.19')
 
     def flag_handler(self, name, flags):
         # -std=c99 at least required, old versions of GCC default to -std=c90
@@ -132,9 +171,10 @@ class PyNumpy(PythonPackage):
                                    '{0}'.format(gcc_version))
             if gcc_version <= Version('5.1'):
                 flags.append(self.compiler.c99_flag)
+
         return (flags, None, None)
 
-    @run_before('build')
+    @run_before('install')
     def set_blas_lapack(self):
         # https://numpy.org/devdocs/user/building.html
         # https://github.com/numpy/numpy/blob/master/site.cfg.example
@@ -180,7 +220,9 @@ class PyNumpy(PythonPackage):
 
         # Tell numpy where to find BLAS/LAPACK libraries
         with open('site.cfg', 'w') as f:
-            if '^intel-mkl' in spec or '^intel-parallel-studio+mkl' in spec:
+            if '^intel-mkl' in spec or \
+               '^intel-parallel-studio+mkl' or \
+               '^intel-oneapi-mkl' in spec:
                 f.write('[mkl]\n')
                 # FIXME: as of @1.11.2, numpy does not work with separately
                 # specified threading and interface layers. A workaround is a
@@ -241,6 +283,28 @@ class PyNumpy(PythonPackage):
                     write_library_dirs(f, lapack_lib_dirs)
                     f.write('include_dirs = {0}\n'.format(lapack_header_dirs))
 
+            if '^fujitsu-ssl2' in spec:
+                if spec.satisfies('+blas'):
+                    f.write('[blas]\n')
+                    f.write('libraries = {0}\n'.format(spec['blas'].libs.names[0]))
+                    write_library_dirs(f, blas_lib_dirs)
+                    f.write('include_dirs = {0}\n'.format(blas_header_dirs))
+                    f.write(
+                        "extra_link_args = {0}\n".format(
+                            self.spec["blas"].libs.ld_flags
+                        )
+                    )
+                if spec.satisfies('+lapack'):
+                    f.write('[lapack]\n')
+                    f.write('libraries = {0}\n'.format(spec['lapack'].libs.names[0]))
+                    write_library_dirs(f, lapack_lib_dirs)
+                    f.write('include_dirs = {0}\n'.format(lapack_header_dirs))
+                    f.write(
+                        "extra_link_args = {0}\n".format(
+                            self.spec["lapack"].libs.ld_flags
+                        )
+                    )
+
     def setup_build_environment(self, env):
         # Tell numpy which BLAS/LAPACK libraries we want to use.
         # https://github.com/numpy/numpy/pull/13132
@@ -251,7 +315,8 @@ class PyNumpy(PythonPackage):
         if 'blas' not in spec:
             blas = ''
         elif spec['blas'].name == 'intel-mkl' or \
-                spec['blas'].name == 'intel-parallel-studio':
+                spec['blas'].name == 'intel-parallel-studio' or \
+                spec['blas'].name == 'intel-oneapi-mkl':
             blas = 'mkl'
         elif spec['blas'].name == 'blis':
             blas = 'blis'
@@ -270,7 +335,8 @@ class PyNumpy(PythonPackage):
         if 'lapack' not in spec:
             lapack = ''
         elif spec['lapack'].name == 'intel-mkl' or \
-                spec['lapack'].name == 'intel-parallel-studio':
+                spec['lapack'].name == 'intel-parallel-studio' or \
+                spec['lapack'].name == 'intel-oneapi-mkl':
             lapack = 'mkl'
         elif spec['lapack'].name == 'openblas':
             lapack = 'openblas'
@@ -284,20 +350,6 @@ class PyNumpy(PythonPackage):
             lapack = 'lapack'
 
         env.set('NPY_LAPACK_ORDER', lapack)
-
-    def build_args(self, spec, prefix):
-        args = []
-
-        # From NumPy 1.10.0 on it's possible to do a parallel build.
-        # https://numpy.org/devdocs/user/building.html#parallel-builds
-        if self.version >= Version('1.10.0'):
-            # But Parallel build in Python 3.5+ is broken.  See:
-            # https://github.com/spack/spack/issues/7927
-            # https://github.com/scipy/scipy/issues/7112
-            if spec['python'].version < Version('3.5'):
-                args = ['-j', str(make_jobs)]
-
-        return args
 
     @run_after('install')
     @on_package_attributes(run_tests=True)

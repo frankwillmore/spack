@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -6,46 +6,52 @@
 """This module implements the classes necessary to generate TCL
 non-hierarchical modules.
 """
-import os.path
+import posixpath
 import string
-from typing import Dict, Any  # novm
+from typing import Any, Dict  # novm
 
 import llnl.util.tty as tty
 
 import spack.config
 import spack.projections as proj
 import spack.tengine as tengine
-from .common import BaseConfiguration, BaseFileLayout
-from .common import BaseContext, BaseModuleFileWriter
+
+from .common import BaseConfiguration, BaseContext, BaseFileLayout, BaseModuleFileWriter
 
 
 #: TCL specific part of the configuration
-def configuration():
-    return spack.config.get('modules:tcl', {})
+def configuration(module_set_name):
+    config_path = 'modules:%s:tcl' % module_set_name
+    config = spack.config.get(config_path, {})
+    if not config and module_set_name == 'default':
+        # return old format for backward compatibility
+        return spack.config.get('modules:tcl', {})
+    return config
 
 
-#: Caches the configuration {spec_hash: configuration}
+# Caches the configuration {spec_hash: configuration}
 configuration_registry = {}  # type: Dict[str, Any]
 
 
-def make_configuration(spec):
+def make_configuration(spec, module_set_name):
     """Returns the tcl configuration for spec"""
-    key = spec.dag_hash()
+    key = (spec.dag_hash(), module_set_name)
     try:
         return configuration_registry[key]
     except KeyError:
-        return configuration_registry.setdefault(key, TclConfiguration(spec))
+        return configuration_registry.setdefault(
+            key, TclConfiguration(spec, module_set_name))
 
 
-def make_layout(spec):
+def make_layout(spec, module_set_name):
     """Returns the layout information for spec """
-    conf = make_configuration(spec)
+    conf = make_configuration(spec, module_set_name)
     return TclFileLayout(conf)
 
 
-def make_context(spec):
+def make_context(spec, module_set_name):
     """Returns the context information for spec"""
-    conf = make_configuration(spec)
+    conf = make_configuration(spec, module_set_name)
     return TclContext(conf)
 
 
@@ -100,4 +106,7 @@ class TclContext(BaseContext):
 
 class TclModulefileWriter(BaseModuleFileWriter):
     """Writer class for tcl module files."""
-    default_template = os.path.join('modules', 'modulefile.tcl')
+    # Note: Posixpath is used here as opposed to
+    # os.path.join due to spack.spec.Spec.format
+    # requiring forward slash path seperators at this stage
+    default_template = posixpath.join('modules', 'modulefile.tcl')

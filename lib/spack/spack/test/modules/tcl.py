@@ -1,7 +1,9 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
+
+import sys
 
 import pytest
 
@@ -15,6 +17,9 @@ libdwarf_spec_string = 'libdwarf target=x86_64'
 
 #: Class of the writer tested in this module
 writer_cls = spack.modules.tcl.TclModulefileWriter
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32",
+                                reason="does not run on windows")
 
 
 @pytest.mark.usefixtures('config', 'mock_packages')
@@ -359,14 +364,14 @@ class TestTcl(object):
         # the tests database
         mpileaks_specs = database.query('mpileaks')
         for item in mpileaks_specs:
-            writer = writer_cls(item)
+            writer = writer_cls(item, 'default')
             assert not writer.conf.blacklisted
 
         # callpath is a dependency of mpileaks, and has been pulled
         # in implicitly
         callpath_specs = database.query('callpath')
         for item in callpath_specs:
-            writer = writer_cls(item)
+            writer = writer_cls(item, 'default')
             assert writer.conf.blacklisted
 
     @pytest.mark.regression('9624')
@@ -385,3 +390,10 @@ class TestTcl(object):
         # Test the mpileaks that should NOT have the autoloaded dependencies
         content = modulefile_content('mpileaks ^mpich')
         assert len([x for x in content if 'is-loaded' in x]) == 0
+
+    def test_modules_no_arch(self, factory, module_configuration):
+        module_configuration('no_arch')
+        module, spec = factory(mpileaks_spec_string)
+        path = module.layout.filename
+
+        assert str(spec.os) not in path

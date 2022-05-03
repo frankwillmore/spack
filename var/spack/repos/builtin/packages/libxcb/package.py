@@ -1,4 +1,4 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -53,7 +53,7 @@ class Libxcb(AutotoolsPackage):
         config_args = []
 
         # -Werror flags are not properly interpreted by the NVIDIA compiler
-        if self.spec.satisfies('%nvhpc'):
+        if self.spec.satisfies('%nvhpc@:20.11'):
             config_args.append('--disable-selective-werror')
 
         return config_args

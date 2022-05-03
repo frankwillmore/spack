@@ -1,10 +1,10 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 
-class QuantumEspresso(Package):
+class QuantumEspresso(CMakePackage):
     """Quantum ESPRESSO is an integrated suite of Open-Source computer codes
     for electronic-structure calculations and materials modeling at the
     nanoscale. It is based on density-functional theory, plane waves, and
@@ -15,10 +15,15 @@ class QuantumEspresso(Package):
     url = 'https://gitlab.com/QEF/q-e/-/archive/qe-6.6/q-e-qe-6.6.tar.gz'
     git = 'https://gitlab.com/QEF/q-e.git'
 
-    maintainers = ['naromero77']
+    maintainers = ['ye-luo', 'danielecesarini']
 
     version('develop', branch='develop')
-    version('6.6', sha256='924656cb083f52e5d2fe71ade05881389dac64b45316f1bdd6dee1c6170a672c', preferred=True)
+    version('7.0', sha256='85beceb1aaa1678a49e774c085866d4612d9d64108e0ac49b23152c8622880ee')
+    version('6.8', sha256='654855c69864de7ece5ef2f2c0dea2d32698fe51192a8646b1555b0c57e033b2')
+    version('6.7', sha256='fe0ce74ff736b10d2a20c9d59025c01f88f86b00d229c123b1791f1edd7b4315',
+            url='https://gitlab.com/QEF/q-e/-/archive/qe-6.7MaX-Release/q-e-qe-6.7MaX-Release.tar.gz'
+            )
+    version('6.6', sha256='924656cb083f52e5d2fe71ade05881389dac64b45316f1bdd6dee1c6170a672c')
     version('6.5', sha256='258b2a8a6280e86dad779e5c56356d8b35dc96d12ff33dabeee914bc03d6d602')
     version('6.4.1', sha256='b0d7e9f617b848753ad923d8c6ca5490d5d82495f82b032b71a0ff2f2e9cfa08')
     version('6.4', sha256='781366d03da75516fdcf9100a1caadb26ccdd1dedd942a6f8595ff0edca74bfe')
@@ -33,21 +38,65 @@ class QuantumEspresso(Package):
     resource(name='environ',
              git='https://github.com/environ-developers/Environ.git',
              tag='v1.1',
-             when='@6.3:6.4.99 +environ',
+             when='@6.3:6.4 +environ',
              destination='.'
              )
 
     resource(name='environ',
              git='https://github.com/environ-developers/Environ.git',
              tag='v1.0',
-             when='@6.2.1:6.2.99 +environ',
+             when='@6.2.1:6.2 +environ',
              destination='.'
              )
 
-    variant('mpi', default=True, description='Builds with mpi support')
+    variant('cmake', default=True, description='Builds via CMake')
+    with when('+cmake'):
+        depends_on("cmake@3.14.0:", type="build")
+        conflicts('@:6.7', msg='+cmake works since QE v6.8')
+
+        variant('libxc', default=False, description='Uses libxc')
+        depends_on('libxc@5.1.2:', when='+libxc')
+
+        # TODO
+        # variant(
+        #     'gpu', default='none', description='Builds with GPU support',
+        #     values=('nvidia', 'none'), multi=False
+        # )
+
     variant('openmp', default=False, description='Enables openMP support')
-    variant('scalapack', default=True, description='Enables scalapack support')
-    variant('elpa', default=False, description='Uses elpa as an eigenvalue solver')
+    # Need OpenMP threaded FFTW and BLAS libraries when configured
+    # with OpenMP support
+    with when('+openmp'):
+        conflicts('^fftw~openmp')
+        conflicts('^amdfftw~openmp')
+        conflicts('^openblas threads=none')
+        conflicts('^openblas threads=pthreads')
+
+    # Apply upstream patches by default. Variant useful for 3rd party
+    # patches which are incompatible with upstream patches
+    desc = 'Apply recommended upstream patches. May need to be set '
+    desc = desc + 'to False for third party patches or plugins'
+    variant('patch', default=True, description=desc)
+
+    variant('mpi', default=True, description='Builds with mpi support')
+    with when('+mpi'):
+        depends_on('mpi')
+        variant('scalapack', default=True, description='Enables scalapack support')
+
+    with when('+scalapack'):
+        depends_on('scalapack')
+        variant('elpa', default=False, description='Uses elpa as an eigenvalue solver')
+
+    with when('+elpa'):
+        # CMake builds only support elpa without openmp
+        depends_on('elpa~openmp', when='+cmake')
+        depends_on('elpa+openmp', when='+openmp~cmake')
+        depends_on('elpa~openmp', when='~openmp~cmake')
+        # Elpa is formally supported by @:5.4.0, but QE configure searches
+        # for it in the wrong folders (or tries to download it within
+        # the build directory). Instead of patching Elpa to provide the
+        # folder QE expects as a link, we issue a conflict here.
+        conflicts('@:5.4.0', msg='+elpa requires QE >= 6.0')
 
     # Support for HDF5 has been added starting in version 6.1.0 and is
     # still experimental, therefore we default to False for the variant
@@ -56,62 +105,9 @@ class QuantumEspresso(Package):
         values=('parallel', 'serial', 'none'), multi=False
     )
 
-    # Enables building Electron-phonon Wannier 'epw.x' executable
-    # http://epw.org.uk/Main/About
-    variant('epw', default=False,
-            description='Builds Electron-phonon Wannier executable')
-
-    # Apply upstream patches by default. Variant useful for 3rd party
-    # patches which are incompatible with upstream patches
-    desc = 'Apply recommended upstream patches. May need to be set '
-    desc = desc + 'to False for third party patches or plugins'
-    variant('patch', default=True, description=desc)
-
-    # QMCPACK converter patch
-    # https://github.com/QMCPACK/qmcpack/tree/develop/external_codes/quantum_espresso
-    variant('qmcpack', default=False,
-            description='Build QE-to-QMCPACK wave function converter')
-
-    variant('environ', default=False,
-            description='Enables support for introducing environment effects '
-            'into atomistic first-principles simulations.'
-            'See http://quantum-environ.org/about.html')
-
-    # Dependencies
-    depends_on('blas')
-    depends_on('lapack')
-    depends_on('fftw-api@3')
-    depends_on('mpi', when='+mpi')
-    depends_on('scalapack', when='+scalapack+mpi')
-    depends_on('elpa+openmp', when='+elpa+openmp')
-    depends_on('elpa~openmp', when='+elpa~openmp')
     # Versions of HDF5 prior to 1.8.16 lead to QE runtime errors
     depends_on('hdf5@1.8.16:+fortran+hl+mpi', when='hdf5=parallel')
     depends_on('hdf5@1.8.16:+fortran+hl~mpi', when='hdf5=serial')
-    depends_on('hdf5', when='+qmcpack')
-    # TODO: enable building EPW when ~mpi
-    depends_on('mpi', when='+epw')
-
-    # CONFLICTS SECTION
-    # Omitted for now due to concretizer bug
-    # MKL with 64-bit integers not supported.
-    # conflicts(
-    #     '^mkl+ilp64',
-    #     msg='Quantum ESPRESSO does not support MKL 64-bit integer variant'
-    # )
-
-    # We can't ask for scalapack or elpa if we don't want MPI
-    conflicts(
-        '+scalapack',
-        when='~mpi',
-        msg='scalapack is a parallel library and needs MPI support'
-    )
-
-    conflicts(
-        '+elpa',
-        when='~mpi',
-        msg='elpa is a parallel library and needs MPI support'
-    )
 
     # HDF5 support introduced in 6.1.0, but the configure had some limitations.
     # In recent tests (Oct 2019), GCC and Intel work with the HDF5 Spack
@@ -137,61 +133,83 @@ class QuantumEspresso(Package):
         msg='parallel HDF5 requires MPI support'
     )
 
-    # Elpa is formally supported by @:5.4.0, but QE configure searches
-    # for it in the wrong folders (or tries to download it within
-    # the build directory). Instead of patching Elpa to provide the
-    # folder QE expects as a link, we issue a conflict here.
-    conflicts('+elpa', when='@:5.4.0')
+    # QMCPACK converter patch
+    # https://github.com/QMCPACK/qmcpack/tree/develop/external_codes/quantum_espresso
+    variant('qmcpack', default=False,
+            description='Build QE-to-QMCPACK wave function converter')
 
-    # Some QMCPACK converters are incompatible with upstream patches.
-    # HDF5 is a hard requirement. Need to do two HDF5 cases explicitly
-    # since Spack lacks support for expressing NOT operation.
-    conflicts(
-        '@6.4+patch',
-        when='+qmcpack',
-        msg='QE-to-QMCPACK wave function converter requires '
-        'deactivatation of upstream patches'
-    )
-    conflicts(
-        '@6.3:6.4.0 hdf5=serial',
-        when='+qmcpack',
-        msg='QE-to-QMCPACK wave function converter only '
-        'supported with parallel HDF5'
-    )
-    conflicts(
-        'hdf5=none',
-        when='+qmcpack',
-        msg='QE-to-QMCPACK wave function converter requires HDF5'
-    )
+    with when('+qmcpack'):
+        # Some QMCPACK converters are incompatible with upstream patches.
+        # HDF5 is a hard requirement. Need to do two HDF5 cases explicitly
+        # since Spack lacks support for expressing NOT operation.
+        conflicts(
+            '@6.4+patch',
+            msg='QE-to-QMCPACK wave function converter requires '
+            'deactivatation of upstream patches'
+        )
+        conflicts(
+            '@6.3:6.4.0 hdf5=serial',
+            msg='QE-to-QMCPACK wave function converter only '
+            'supported with parallel HDF5'
+        )
+        conflicts(
+            'hdf5=none',
+            msg='QE-to-QMCPACK wave function converter requires HDF5'
+        )
 
-    # The first version of Q-E to feature integrated EPW is 6.0.0,
-    # as per http://epw.org.uk/Main/DownloadAndInstall .
-    # Complain if trying to install a version older than this.
-    conflicts('+epw', when='@:5',
-              msg='EPW only available from version 6.0.0 and on')
+    # Enables building Electron-phonon Wannier 'epw.x' executable
+    # http://epw.org.uk/Main/About
+    variant('epw', default=False,
+            description='Builds Electron-phonon Wannier executable')
+    conflicts('~epw', when='+cmake', msg='epw cannot be turned off when using CMake')
 
-    # Below goes some constraints as shown in the link above.
-    # Constraints may be relaxed as successful reports
-    # of different compiler+mpi combinations arrive
+    with when('+epw'):
+        # The first version of Q-E to feature integrated EPW is 6.0.0,
+        # as per http://epw.org.uk/Main/DownloadAndInstall .
+        # Complain if trying to install a version older than this.
+        conflicts('@:5', msg='EPW only available from version 6.0.0 and on')
 
-    # TODO: enable building EPW when ~mpi
-    conflicts('+epw', when='~mpi', msg='EPW needs MPI')
+        # Below goes some constraints as shown in the link above.
+        # Constraints may be relaxed as successful reports
+        # of different compiler+mpi combinations arrive
 
-    # EPW doesn't gets along well with OpenMPI 2.x.x
-    conflicts('+epw', when='^openmpi@2.0.0:2.999.999',
-              msg='OpenMPI version incompatible with EPW')
+        # TODO: enable building EPW when ~mpi and ~cmake
+        conflicts('~mpi', when='~cmake', msg='EPW needs MPI when ~cmake')
 
-    # EPW also doesn't gets along well with PGI 17.x + OpenMPI 1.10.7
-    conflicts('+epw', when='^openmpi@1.10.7%pgi@17.0:17.12',
-              msg='PGI+OpenMPI version combo incompatible with EPW')
+        # EPW doesn't gets along well with OpenMPI 2.x.x
+        conflicts('^openmpi@2.0.0:2',
+                  msg='OpenMPI version incompatible with EPW')
+
+        # EPW also doesn't gets along well with PGI 17.x + OpenMPI 1.10.7
+        conflicts('^openmpi@1.10.7%pgi@17.0:17.12',
+                  msg='PGI+OpenMPI version combo incompatible with EPW')
+
+    variant('environ', default=False,
+            description='Enables support for introducing environment effects '
+            'into atomistic first-principles simulations.'
+            'See http://quantum-environ.org/about.html')
+    conflicts('+environ', when='+cmake', msg='environ doesn\'t work with CMake')
+
+    # Dependencies not affected by variants
+    depends_on('blas')
+    depends_on('lapack')
+    depends_on('fftw-api@3')
+
+    # CONFLICTS SECTION
+    # Omitted for now due to concretizer bug
+    # MKL with 64-bit integers not supported.
+    # conflicts(
+    #     '^mkl+ilp64',
+    #     msg='Quantum ESPRESSO does not support MKL 64-bit integer variant'
+    # )
 
     # PATCHES SECTION
     # THIRD-PARTY PATCHES
     # NOTE: *SOME* third-party patches will require deactivation of
     # upstream patches using `~patch` variant
 
-    # QMCPACK converter patches for QE 6.4.1, 6.4, and 6.3
-    conflicts('@:6.2,6.5:', when='+qmcpack',
+    # QMCPACK converter patches for QE 6.8, 6.7, 6.4.1, 6.4, and 6.3
+    conflicts('@:6.2,6.5:6.6', when='+qmcpack',
               msg='QMCPACK converter NOT available for this version of QE')
 
     # Internal compiler error gcc8 and a64fx, I check only 6.5 and 6.6
@@ -201,16 +219,31 @@ class QuantumEspresso(Package):
     conflicts('@6.5:', when='+environ',
               msg='6.4.x is the latest QE series supported by Environ')
 
+    # 7.0
+    patch_url = 'https://raw.githubusercontent.com/QMCPACK/qmcpack/v3.13.0/external_codes/quantum_espresso/add_pw2qmcpack_to_qe-7.0.diff'
+    patch_checksum = 'ef60641d8b953b4ba21d9c662b172611305bb63786996ad6e81e7609891677ff'
+    patch(patch_url, sha256=patch_checksum, when='@7.0+qmcpack')
+
+    # 6.8
+    patch_url = 'https://raw.githubusercontent.com/QMCPACK/qmcpack/v3.13.0/external_codes/quantum_espresso/add_pw2qmcpack_to_qe-6.8.diff'
+    patch_checksum = '69f7fbd72aba810c35a0b034188e45bea8f9f11d3150c0715e1b3518d5c09248'
+    patch(patch_url, sha256=patch_checksum, when='@6.8+qmcpack')
+
+    # 6.7
+    patch_url = 'https://raw.githubusercontent.com/QMCPACK/qmcpack/v3.13.0/external_codes/quantum_espresso/add_pw2qmcpack_to_qe-6.7.0.diff'
+    patch_checksum = '72564c168231dd4a1279a74e76919af701d47cee9a851db6e205753004fe9bb5'
+    patch(patch_url, sha256=patch_checksum, when='@6.7+qmcpack')
+
     # 6.4.1
-    patch_url = 'https://raw.githubusercontent.com/QMCPACK/qmcpack/develop/external_codes/quantum_espresso/add_pw2qmcpack_to_qe-6.4.1.diff'
+    patch_url = 'https://raw.githubusercontent.com/QMCPACK/qmcpack/v3.13.0/external_codes/quantum_espresso/add_pw2qmcpack_to_qe-6.4.1.diff'
     patch_checksum = '57cb1b06ee2653a87c3acc0dd4f09032fcf6ce6b8cbb9677ae9ceeb6a78f85e2'
     patch(patch_url, sha256=patch_checksum, when='@6.4.1+qmcpack')
     # 6.4
-    patch_url = 'https://raw.githubusercontent.com/QMCPACK/qmcpack/develop/external_codes/quantum_espresso/add_pw2qmcpack_to_qe-6.4.diff'
+    patch_url = 'https://raw.githubusercontent.com/QMCPACK/qmcpack/v3.13.0/external_codes/quantum_espresso/add_pw2qmcpack_to_qe-6.4.diff'
     patch_checksum = 'ef08f5089951be902f0854a4dbddaa7b01f08924cdb27decfade6bef0e2b8994'
     patch(patch_url, sha256=patch_checksum, when='@6.4:6.4.0+qmcpack')
     # 6.3
-    patch_url = 'https://raw.githubusercontent.com/QMCPACK/qmcpack/develop/external_codes/quantum_espresso/add_pw2qmcpack_to_qe-6.3.diff'
+    patch_url = 'https://raw.githubusercontent.com/QMCPACK/qmcpack/v3.13.0/external_codes/quantum_espresso/add_pw2qmcpack_to_qe-6.3.diff'
     patch_checksum = '2ee346e24926479f5e96f8dc47812173a8847a58354bbc32cf2114af7a521c13'
     patch(patch_url, sha256=patch_checksum, when='@6.3+qmcpack')
 
@@ -223,6 +256,16 @@ class QuantumEspresso(Package):
     patch('https://gitlab.com/QEF/q-e/-/commit/cf1fedefc20d39f5cd7551ded700ea4c77ad6e8f.diff',
           sha256='8f179663a8d031aff9b1820a32449942281195b6e7b1ceaab1f729651b43fa58',
           when='+patch@6.6')
+    # QE 6.5 INTENT(OUT) without settig value in tetra_weights_only(..., ef):
+    # For Fujitsu compiler
+    patch('https://gitlab.com/QEF/q-e/-/commit/8f096b53e75026701c681c508e2c24a9378c0950.diff',
+          sha256='f4f1cce4182b57ac797c8f6ec8460fe375ee96385fcd8f6a61e1460bc957eb67',
+          when='+patch@6.5')
+    # QE 6.5 Fix INTENT
+    # For Fujitsu compiler
+    patch('https://gitlab.com/QEF/q-e/-/commit/c2a86201ed72693ffa50cc99b22f5d3365ae2c2b.diff',
+          sha256='b2dadc0bc008a3ad4b74ae85cc380dd2b63f2ae43a634e6f9d8db8077efcea6c',
+          when='+patch@6.5')
     # QE 6.3 requires multiple patches to fix MKL detection
     # There may still be problems on Mac with MKL detection
     patch('https://gitlab.com/QEF/q-e/commit/0796e1b7c55c9361ecb6515a0979280e78865e36.diff',
@@ -241,14 +284,66 @@ class QuantumEspresso(Package):
           sha256='b1aa3179ee1c069964fb9c21f3b832aebeae54947ce8d3cc1a74e7b154c3c10f',
           when='+patch@6.4.1:6.5.0')
 
+    # QE 6.4.1 Fix intent for Fujitsu compiler
+    patch('fj-intent.6.4.1.patch', when='+patch@6.4.1')
+    # QE 6.4.1 Fix intent
+    patch('https://gitlab.com/QEF/q-e/-/commit/c2a86201ed72693ffa50cc99b22f5d3365ae2c2b.diff',
+          sha256='b2dadc0bc008a3ad4b74ae85cc380dd2b63f2ae43a634e6f9d8db8077efcea6c',
+          when='+patch@6.4.1')
+
+    # QE 6.4.1 Small fixes for XLF compilation
+    patch('https://gitlab.com/QEF/q-e/-/commit/cf088926d68792cbaea48960c222e336a3965df6.diff',
+          sha256='bbceba1fb08d01d548d4393bbcaeae966def13f75884268a0f84448457b8eaa3',
+          when='+patch@6.4.1:6.5.0')
+
+    # Configure updated to work with AOCC compilers
+    patch('configure_aocc.patch', when='@6.7:6.8 %aocc')
+
     # Configure updated to work with NVIDIA compilers
     patch('nvhpc.patch', when='@6.5 %nvhpc')
 
-    # Spurious problems running in parallel the Makefile
-    # generated by the configure
-    parallel = False
+    # Configure updated to work with Fujitsu compilers
+    patch('fj.6.5.patch', when='@6.5+patch %fj')
+    patch('fj.6.6.patch', when='@6.6:6.7+patch %fj')
 
+    # extlibs_makefile updated to work with fujitsu compilers
+    patch('fj-fox.patch', when='+patch %fj')
+
+    def cmake_args(self):
+        spec = self.spec
+
+        cmake_args = [
+            self.define_from_variant('QE_ENABLE_MPI', 'mpi'),
+            self.define_from_variant('QE_ENABLE_OPENMP', 'openmp'),
+            self.define_from_variant('QE_ENABLE_SCALAPACK', 'scalapack'),
+            self.define_from_variant('QE_ENABLE_ELPA', 'elpa'),
+            self.define_from_variant('QE_ENABLE_LIBXC', 'libxc'),
+        ]
+
+        # QE prefers taking MPI compiler wrappers as CMake compilers.
+        if '+mpi' in spec:
+            cmake_args.append(self.define('CMAKE_C_COMPILER', spec['mpi'].mpicc))
+            cmake_args.append(self.define('CMAKE_Fortran_COMPILER', spec['mpi'].mpifc))
+
+        if not spec.satisfies('hdf5=none'):
+            cmake_args.append(self.define('QE_ENABLE_HDF5', True))
+
+        if '+qmcpack' in spec:
+            cmake_args.append(self.define('QE_ENABLE_PW2QMCPACK', True))
+
+        return cmake_args
+
+    @when("~cmake")
+    def cmake(self, spec, prefix):
+        print("Bypass cmake stage when building via configure")
+
+    @when("~cmake")
+    def build(self, spec, prefix):
+        print("Bypass build stage when building via configure")
+
+    @when("~cmake")
     def install(self, spec, prefix):
+        print("Override install stage when building via configure")
 
         prefix_path = prefix.bin if '@:5.4.0' in spec else prefix
         options = ['-prefix={0}'.format(prefix_path)]
@@ -311,7 +406,19 @@ class QuantumEspresso(Package):
         if '^fftw@3:' in spec:
             fftw_prefix = spec['fftw'].prefix
             options.append('FFTW_INCLUDE={0}'.format(fftw_prefix.include))
-            fftw_ld_flags = spec['fftw'].libs.ld_flags
+            if '+openmp' in spec:
+                fftw_ld_flags = spec['fftw:openmp'].libs.ld_flags
+            else:
+                fftw_ld_flags = spec['fftw'].libs.ld_flags
+            options.append('FFT_LIBS={0}'.format(fftw_ld_flags))
+
+        if '^amdfftw' in spec:
+            fftw_prefix = spec['amdfftw'].prefix
+            options.append('FFTW_INCLUDE={0}'.format(fftw_prefix.include))
+            if '+openmp' in spec:
+                fftw_ld_flags = spec['amdfftw:openmp'].libs.ld_flags
+            else:
+                fftw_ld_flags = spec['amdfftw'].libs.ld_flags
             options.append('FFT_LIBS={0}'.format(fftw_ld_flags))
 
         # External BLAS and LAPACK requires the correct link line into
@@ -332,8 +439,11 @@ class QuantumEspresso(Package):
         #   BLAS_LIBS being set
         # However, MKL is correctly picked up by qe-6.5 for BLAS and FFT if
         # MKLROOT is set (which SPACK does automatically for ^mkl)
-        if not ('quantum-espresso@6.5' in spec and '^mkl' in spec):
+        if spec.satisfies('@:6.4'):  # set even if MKL is selected
             options.append('BLAS_LIBS={0}'.format(lapack_blas.ld_flags))
+        else:  # behavior changed at 6.5 and later
+            if not spec.satisfies('^mkl'):
+                options.append('BLAS_LIBS={0}'.format(lapack_blas.ld_flags))
 
         if '+scalapack' in spec:
             if '^mkl' in spec:
@@ -344,6 +454,8 @@ class QuantumEspresso(Package):
             else:
                 scalapack_option = 'yes'
             options.append('--with-scalapack={0}'.format(scalapack_option))
+            scalapack_lib = spec['scalapack'].libs
+            options.append('SCALAPACK_LIBS={0}'.format(scalapack_lib.ld_flags))
 
         if '+elpa' in spec:
 
@@ -360,8 +472,23 @@ class QuantumEspresso(Package):
 
             options.extend([
                 '--with-elpa-include={0}'.format(elpa_include),
-                '--with-elpa-lib={0}'.format(elpa.libs[0])
+                '--with-elpa-version={0}'.format(elpa.version.version[0]),
             ])
+
+            elpa_suffix = '_openmp' if '+openmp' in elpa else ''
+
+            # Currently AOCC support only static libraries of ELPA
+            if '%aocc' in spec:
+                options.extend([
+                    '--with-elpa-lib={0}'.format(
+                        join_path(elpa.prefix.lib,
+                                  'libelpa{elpa_suffix}.a'
+                                  .format(elpa_suffix=elpa_suffix)))
+                ])
+            else:
+                options.extend([
+                    '--with-elpa-lib={0}'.format(elpa.libs[0])
+                ])
 
         if spec.variants['hdf5'].value != 'none':
             options.append('--with-hdf5={0}'.format(spec['hdf5'].prefix))
@@ -390,10 +517,16 @@ class QuantumEspresso(Package):
                     zlib_libs, format(spec['zlib'].libs.ld_flags), make_inc
                 )
 
-        if '+epw' in spec:
-            make('all', 'epw')
+        # QE 6.6 and later has parallel builds fixed
+        if spec.satisfies('@:6.5'):
+            parallel_build_on = False
         else:
-            make('all')
+            parallel_build_on = True
+
+        if '+epw' in spec:
+            make('all', 'epw', parallel=parallel_build_on)
+        else:
+            make('all', parallel=parallel_build_on)
 
         if '+environ' in spec:
             addsonpatch = Executable('./install/addsonpatch.sh')
@@ -406,7 +539,7 @@ class QuantumEspresso(Package):
 
             makedeps()
 
-            make('pw')
+            make('pw', parallel=parallel_build_on)
 
         if 'platform=darwin' in spec:
             mkdirp(prefix.bin)

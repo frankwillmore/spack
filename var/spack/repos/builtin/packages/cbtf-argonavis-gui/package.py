@@ -1,17 +1,19 @@
-# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2022 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import os
+
+from spack import *
+from spack.pkg.builtin.boost import Boost
 
 
 class CbtfArgonavisGui(QMakePackage):
     """CBTF Argo Navis GUI project contains the GUI that views OpenSpeedShop
        performance information by loading in the Sqlite database files.
     """
-    homepage = "http://sourceforge.net/p/cbtf/wiki/Home/"
+    homepage = "https://sourceforge.net/p/cbtf/wiki/Home/"
     git      = "https://github.com/OpenSpeedShop/cbtf-argonavis-gui.git"
 
     version('develop', branch='master')
@@ -23,24 +25,29 @@ class CbtfArgonavisGui(QMakePackage):
 
     depends_on("boost@1.66.0:1.69.0")
 
+    # TODO: replace this with an explicit list of components of Boost,
+    # for instance depends_on('boost +filesystem')
+    # See https://github.com/spack/spack/pull/22303 for reference
+    depends_on(Boost.with_default_variants)
+
     # For MRNet
     depends_on("mrnet@5.0.1-3:+lwthreads", when='@develop')
     depends_on("mrnet@5.0.1-3+lwthreads", when='@1.3.0.0:9999')
 
     # Dependencies for the openspeedshop cbtf packages.
     depends_on("cbtf@develop", when='@develop')
-    depends_on("cbtf@1.9.1.0:9999", when='@1.3.0.0:9999')
+    depends_on("cbtf@1.9.3:9999", when='@1.3.0.0:9999')
 
     depends_on("cbtf-krell@develop", when='@develop')
-    depends_on("cbtf-krell@1.9.1.0:9999", when='@1.3.0.0:9999')
+    depends_on("cbtf-krell@1.9.3:9999", when='@1.3.0.0:9999')
 
     depends_on("cbtf-argonavis@develop", when='@develop')
-    depends_on("cbtf-argonavis@1.9.1.0:9999", when='@1.3.0.0:9999')
+    depends_on("cbtf-argonavis@1.9.3:9999", when='@1.3.0.0:9999')
 
     depends_on("cuda")
 
     depends_on("openspeedshop-utils+cuda@develop", when='@develop')
-    depends_on("openspeedshop-utils@2.3.1.3:+cuda", when='@1.3.0.0:9999')
+    depends_on("openspeedshop-utils@2.4.0:+cuda", when='@1.3.0.0:9999')
 
     # For Xerces-C
     depends_on("xerces-c")
